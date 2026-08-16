@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 const tabs = [
+  { key: "today", label: "Today" },
   { key: "liveNow", label: "Live Now" },
   { key: "upcoming", label: "Upcoming" },
   { key: "tvChannels", label: "TV Channels" },
@@ -26,6 +27,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [guide, setGuide] = useState({
+    today: [],
     liveNow: [],
     upcoming: [],
     tvChannels: [],
@@ -52,6 +54,7 @@ export default function HomePage() {
       }
       const payload = await response.json();
       setGuide({
+        today: payload.today || [],
         liveNow: payload.liveNow || [],
         upcoming: payload.upcoming || [],
         tvChannels: payload.tvChannels || [],
@@ -64,6 +67,7 @@ export default function HomePage() {
       setError("Could not load guide data right now. Please retry.");
       setGuide((prev) => ({
         ...prev,
+        today: [],
         liveNow: [],
         upcoming: [],
         tvChannels: [],
@@ -80,6 +84,7 @@ export default function HomePage() {
 
   const counts = useMemo(
     () => ({
+      today: guide.today.length,
       liveNow: guide.liveNow.length,
       upcoming: guide.upcoming.length,
       tvChannels: guide.tvChannels.length,
@@ -172,6 +177,23 @@ export default function HomePage() {
               </article>
             ))}
           </div>
+        ) : null}
+
+        {!loading && !error && tab === "today" && guide.today.length === 0 ? (
+          <p className="state">No programmes found for today with this search.</p>
+        ) : null}
+        {!loading && !error && tab === "today" && guide.today.length > 0 ? (
+          <ul className="listing-grid">
+            {guide.today.map((item) => (
+              <li key={item.id} className="listing-card">
+                <p className="sport-tag">TODAY</p>
+                <h3>{item.show}</h3>
+                <p>{item.title}</p>
+                <p className="meta">{item.channel}</p>
+                <p className="meta">Starts: {formatDateTime(item.startAt)}</p>
+              </li>
+            ))}
+          </ul>
         ) : null}
 
         {!loading && !error && tab === "liveNow" && guide.liveNow.length === 0 ? (
