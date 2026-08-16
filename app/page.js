@@ -17,6 +17,10 @@ const quickFilters = [
   { label: "News", query: "news", tab: "liveNow" },
   { label: "Drama", query: "drama", tab: "upcoming" },
   { label: "Movies", query: "movie", tab: "upcoming" },
+  { label: "Hindi", query: "hindi", tab: "tvChannels" },
+  { label: "Punjabi", query: "punjabi", tab: "tvChannels" },
+  { label: "Bollywood", query: "bollywood", tab: "upcoming" },
+  { label: "Hollywood", query: "hollywood", tab: "upcoming" },
   { label: "Streaming", query: "", tab: "streamingApps" }
 ];
 
@@ -322,6 +326,7 @@ export default function HomePage() {
   const [isTimelinePending, startTimelineTransition] = useTransition();
   const [selectedItem, setSelectedItem] = useState(null);
   const [isFeaturedCompact, setIsFeaturedCompact] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestIdRef = useRef(0);
@@ -567,8 +572,121 @@ export default function HomePage() {
     setSelectedItem(null);
   }
 
+  function handleQuickFilter(filter) {
+    setQuery(filter.query);
+    setTab(filter.tab);
+    setQueryInput(filter.query);
+    setIsSidebarOpen(false);
+  }
+
   return (
-    <main className="page-shell">
+    <>
+      {/* Sidebar Toggle Button */}
+      <button
+        type="button"
+        className="sidebar-toggle"
+        onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+        aria-label="Toggle sidebar menu"
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="3" y1="12" x2="21" y2="12" />
+          <line x1="3" y1="6" x2="21" y2="6" />
+          <line x1="3" y1="18" x2="21" y2="18" />
+        </svg>
+      </button>
+
+      {/* Sidebar Overlay */}
+      {isSidebarOpen && (
+        <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar Menu */}
+      <aside className={`sidebar ${isSidebarOpen ? 'open' : ''}`}>
+        <div className="sidebar-header">
+          <h2>Navigation</h2>
+          <button
+            type="button"
+            className="sidebar-close"
+            onClick={() => setIsSidebarOpen(false)}
+            aria-label="Close sidebar"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="sidebar-content">
+          {/* Quick Navigation */}
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Views</h3>
+            <nav className="sidebar-nav">
+              {tabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`sidebar-nav-item ${tab === t.key ? 'active' : ''}`}
+                  onClick={() => {
+                    setTab(t.key);
+                    setIsSidebarOpen(false);
+                  }}
+                >
+                  <span>{t.label}</span>
+                  <span className="sidebar-nav-count">{counts[t.key] || 0}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          {/* Quick Filters */}
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Quick Filters</h3>
+            <div className="sidebar-filters">
+              {quickFilters.map((filter, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  className="sidebar-filter-btn"
+                  onClick={() => handleQuickFilter(filter)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Region Selector */}
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Region</h3>
+            <select
+              className="sidebar-select"
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+            >
+              {guide.supportedRegions.map((value) => (
+                <option key={value} value={value}>
+                  {value.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Status */}
+          {!loading && guide.providerWarnings?.length > 0 && (
+            <div className="sidebar-section">
+              <h3 className="sidebar-section-title">Warnings</h3>
+              {guide.providerWarnings.map((warning, i) => (
+                <div key={i} className="sidebar-warning">
+                  {warning}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <main className="page-shell">
       <section className="hero-card premium">
         <div className="hero-content">
           <p className="eyebrow">Tonight In UK</p>
@@ -1074,5 +1192,6 @@ export default function HomePage() {
         </div>
       ) : null}
     </main>
+    </>
   );
 }
