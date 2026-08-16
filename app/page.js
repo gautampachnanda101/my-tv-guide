@@ -597,7 +597,14 @@ export default function HomePage() {
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
-        <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />
+        <div 
+          className="sidebar-overlay" 
+          onClick={() => setIsSidebarOpen(false)}
+          onKeyDown={(e) => e.key === 'Escape' && setIsSidebarOpen(false)}
+          role="button"
+          tabIndex={0}
+          aria-label="Close sidebar"
+        />
       )}
 
       {/* Sidebar Menu */}
