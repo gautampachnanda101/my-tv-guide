@@ -1,0 +1,182 @@
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.content {
+  background: #1a1a1a;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(50px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  border-bottom: 1px solid #333;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  color: white;
+  flex: 1;
+  padding-right: 1rem;
+}
+
+.closeButton {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+
+.closeButton:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.playerWrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  background: #000;
+}
+
+.player {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.info {
+  padding: 1.5rem;
+  overflow-y: auto;
+  background: #1a1a1a;
+  color: white;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.channel,
+.year,
+.genre {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.description {
+  margin: 0 0 1.5rem 0;
+  line-height: 1.6;
+  color: #ddd;
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.watchButton {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background: #ff0000;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.watchButton:hover {
+  background: #cc0000;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .modal {
+    padding: 0;
+  }
+
+  .content {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .header {
+    padding: 1rem;
+  }
+
+  .title {
+    font-size: 1rem;
+  }
+
+  .info {
+    padding: 1rem;
+  }
+
+  .meta {
+    font-size: 0.8rem;
+    gap: 0.75rem;
+  }
+}
+
+/* Prevent body scroll when modal is open */
+body:has(.modal) {
+  overflow: hidden;
+}
