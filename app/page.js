@@ -362,7 +362,7 @@ export default function HomePage() {
 
     try {
       const response = await fetch(`/api/guide?${params.toString()}`, {
-        cache: "no-store"
+        next: { revalidate: 300 } // Cache for 5 minutes
       });
       console.log('[loadGuide] Response status:', response.status, response.ok);
       if (!response.ok) {
