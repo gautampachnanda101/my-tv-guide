@@ -358,14 +358,24 @@ export default function HomePage() {
       q: currentQuery
     });
 
+    console.log('[loadGuide] Starting fetch for region:', currentRegion, 'query:', currentQuery);
+
     try {
       const response = await fetch(`/api/guide?${params.toString()}`, {
         cache: "no-store"
       });
+      console.log('[loadGuide] Response status:', response.status, response.ok);
       if (!response.ok) {
         throw new Error("Could not fetch guide data.");
       }
       const payload = await response.json();
+      console.log('[loadGuide] Received payload:', {
+        today: payload.today?.length,
+        liveNow: payload.liveNow?.length,
+        upcoming: payload.upcoming?.length,
+        tvChannels: payload.tvChannels?.length,
+        streamingApps: payload.streamingApps?.length
+      });
       if (requestId !== requestIdRef.current) return;
       setGuide({
         today: payload.today || [],
@@ -377,7 +387,9 @@ export default function HomePage() {
         providerWarnings: payload.providerWarnings || [],
         supportedRegions: payload.supportedRegions || ["uk"]
       });
-    } catch {
+      console.log('[loadGuide] State updated successfully');
+    } catch (err) {
+      console.error('[loadGuide] Error:', err);
       if (requestId !== requestIdRef.current) return;
       setError("Could not load guide data right now. Please retry.");
       setGuide((prev) => ({
@@ -391,6 +403,7 @@ export default function HomePage() {
     } finally {
       if (requestId !== requestIdRef.current) return;
       setLoading(false);
+      console.log('[loadGuide] Loading complete');
     }
   }
 
