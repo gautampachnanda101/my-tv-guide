@@ -38,6 +38,14 @@ Run this before deploying:
 
 npm run build
 
+## Lint checks
+
+Run these while editing UI code:
+
+npm run lint
+npm run lint:css
+npm run lint:all
+
 ## API
 
 - `GET /api/guide?region=uk&q=football`

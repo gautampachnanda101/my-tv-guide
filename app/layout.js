@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "My TV Guide",
-  description: "Find watchable listings based on the services you already have"
+  description: "Your cinematic command center for live TV, channels, and streaming"
 };
 
 export default function RootLayout({ children }) {
