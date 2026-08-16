@@ -3,7 +3,13 @@
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-const tabs = [
+const mainTabs = [
+  { key: "home", label: "Home" },
+  { key: "timeline", label: "Timeline" },
+  { key: "browse", label: "Browse" }
+];
+
+const browseTabs = [
   { key: "today", label: "Today" },
   { key: "liveNow", label: "Live Now" },
   { key: "upcoming", label: "Upcoming" },
@@ -321,7 +327,8 @@ export default function HomePage() {
   const [query, setQuery] = useState("");
   const [channelFilter, setChannelFilter] = useState("");
   const [appFilter, setAppFilter] = useState("");
-  const [tab, setTab] = useState("today");
+  const [mainTab, setMainTab] = useState("home");
+  const [browseTab, setBrowseTab] = useState("today");
   const [timelineDayOffset, setTimelineDayOffset] = useState(0);
   const [isTimelinePending, startTimelineTransition] = useTransition();
   const [selectedItem, setSelectedItem] = useState(null);
@@ -494,8 +501,8 @@ export default function HomePage() {
 
   const headlineCount = counts.today + counts.liveNow + counts.upcoming;
   const displayCount = (value, label) => (loading ? label : value);
-  const activeTabCount = counts[tab] || 0;
-  const activeTabLabel = tabs.find((item) => item.key === tab)?.label || "results";
+  const activeTabCount = counts[browseTab] || 0;
+  const activeTabLabel = browseTabs.find((item) => item.key === browseTab)?.label || "results";
   const timelineDays = useMemo(() => Array.from({ length: 7 }, (_, i) => i), []);
   const selectedTimelineLabel = formatTimelineDayLabel(timelineDayOffset);
 
@@ -629,13 +636,13 @@ export default function HomePage() {
           <div className="sidebar-section">
             <h3 className="sidebar-section-title">Views</h3>
             <nav className="sidebar-nav">
-              {tabs.map((t) => (
+              {browseTabs.map((t) => (
                 <button
                   key={t.key}
                   type="button"
-                  className={`sidebar-nav-item ${tab === t.key ? 'active' : ''}`}
+                  className={`sidebar-nav-item ${browseTab === t.key ? 'active' : ''}`}
                   onClick={() => {
-                    setTab(t.key);
+                    setBrowseTab(t.key);
                     setIsSidebarOpen(false);
                   }}
                 >
@@ -1012,12 +1019,12 @@ export default function HomePage() {
         </div>
 
         <div className="tabs-row">
-          {tabs.map((item) => (
+          {browseTabs.map((item) => (
             <button
               key={item.key}
               type="button"
-              className={tab === item.key ? "tab-pill active" : "tab-pill"}
-              onClick={() => setTab(item.key)}
+              className={browseTab === item.key ? "tab-pill active" : "tab-pill"}
+              onClick={() => setBrowseTab(item.key)}
             >
               {item.label} ({loading ? "…" : counts[item.key]})
             </button>
