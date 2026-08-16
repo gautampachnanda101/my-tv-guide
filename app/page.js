@@ -581,7 +581,7 @@ export default function HomePage() {
 
   function handleQuickFilter(filter) {
     setQuery(filter.query);
-    setTab(filter.tab);
+    setBrowseTab(filter.tab);
     setQueryInput(filter.query);
     setIsSidebarOpen(false);
   }
@@ -1000,7 +1000,7 @@ export default function HomePage() {
                   // Clicking a new filter applies it
                   setQuery(item.query);
                   setQueryInput(item.query);
-                  setTab(item.tab);
+                  setBrowseTab(item.tab);
                 }
               }}
             >
@@ -1033,7 +1033,7 @@ export default function HomePage() {
 
         {!loading && !error && query ? (
           <p className="state query-state">
-            Showing {activeTabCount} {tab} result{activeTabCount === 1 ? "" : "s"} for &quot;{query}&quot;
+            Showing {activeTabCount} {browseTab} result{activeTabCount === 1 ? "" : "s"} for &quot;{query}&quot;
           </p>
         ) : null}
 
@@ -1053,10 +1053,10 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        {!loading && !error && tab === "today" && filteredToday.length === 0 ? (
+        {!loading && !error && browseTab === "today" && filteredToday.length === 0 ? (
           <p className="state">No programmes found for today with this search.</p>
         ) : null}
-        {!loading && !error && tab === "today" && filteredToday.length > 0 ? (
+        {!loading && !error && browseTab === "today" && filteredToday.length > 0 ? (
           <ul className="listing-grid visual">
             {filteredToday.map((item) => (
               <li key={item.id} className="listing-card">
@@ -1076,10 +1076,10 @@ export default function HomePage() {
           </ul>
         ) : null}
 
-        {!loading && !error && tab === "liveNow" && filteredLiveNow.length === 0 ? (
+        {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length === 0 ? (
           <p className="state">No programmes are marked as live right now.</p>
         ) : null}
-        {!loading && !error && tab === "liveNow" && filteredLiveNow.length > 0 ? (
+        {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length > 0 ? (
           <ul className="listing-grid visual">
             {filteredLiveNow.map((item) => (
               <li key={item.id} className="listing-card">
@@ -1099,10 +1099,10 @@ export default function HomePage() {
           </ul>
         ) : null}
 
-        {!loading && !error && tab === "upcoming" && filteredUpcoming.length === 0 ? (
+        {!loading && !error && browseTab === "upcoming" && filteredUpcoming.length === 0 ? (
           <p className="state">No upcoming programmes match this search.</p>
         ) : null}
-        {!loading && !error && tab === "upcoming" && filteredUpcoming.length > 0 ? (
+        {!loading && !error && browseTab === "upcoming" && filteredUpcoming.length > 0 ? (
           <ul className="listing-grid visual">
             {filteredUpcoming.map((item) => (
               <li key={item.id} className="listing-card">
@@ -1122,10 +1122,10 @@ export default function HomePage() {
           </ul>
         ) : null}
 
-        {!loading && !error && tab === "tvChannels" && filteredTvChannels.length === 0 ? (
+        {!loading && !error && browseTab === "tvChannels" && filteredTvChannels.length === 0 ? (
           <p className="state">No channels match this search.</p>
         ) : null}
-        {!loading && !error && tab === "tvChannels" && filteredTvChannels.length > 0 ? (
+        {!loading && !error && browseTab === "tvChannels" && filteredTvChannels.length > 0 ? (
           <ul className="listing-grid visual channels">
             {filteredTvChannels.map((item) => (
               <li key={item.id} className="listing-card">
@@ -1143,11 +1143,11 @@ export default function HomePage() {
           </ul>
         ) : null}
 
-        {!loading && !error && tab === "streamingApps" && filteredStreamingApps.length === 0 ? (
+        {!loading && !error && browseTab === "streamingApps" && filteredStreamingApps.length === 0 ? (
           <p className="state">No streaming apps match this search.</p>
         ) : null}
 
-        {!loading && !error && tab === "streamingApps" && filteredStreamingApps.length > 0 ? (
+        {!loading && !error && browseTab === "streamingApps" && filteredStreamingApps.length > 0 ? (
           <ul className="listing-grid visual apps">
             {filteredStreamingApps.map((item) => (
               <li key={item.id} className="listing-card">
