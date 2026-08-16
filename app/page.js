@@ -962,8 +962,10 @@ export default function HomePage() {
             onClick={() => {
               setChannelFilter("");
               setAppFilter("");
+              setQuery("");
+              setQueryInput("");
             }}
-            disabled={!channelFilter && !appFilter}
+            disabled={!channelFilter && !appFilter && !query.trim()}
           >
             Clear filters
           </button>
@@ -976,8 +978,16 @@ export default function HomePage() {
               type="button"
               className={query.toLowerCase() === item.query ? "quick-chip active" : "quick-chip"}
               onClick={() => {
-                setQueryInput(item.query);
-                setTab(item.tab);
+                if (query.toLowerCase() === item.query) {
+                  // Clicking an active filter removes it
+                  setQuery("");
+                  setQueryInput("");
+                } else {
+                  // Clicking a new filter applies it
+                  setQuery(item.query);
+                  setQueryInput(item.query);
+                  setTab(item.tab);
+                }
               }}
             >
               {item.label}
