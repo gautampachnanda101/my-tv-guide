@@ -44,8 +44,12 @@ export default function VideoPlayer({
 
       const video = videoRef.current;
 
-      // Check if stream is HLS (M3U8)
-      const isHLS = streamUrl.toLowerCase().includes('.m3u8');
+      // Check if stream is HLS. IPTV sources use both the modern ".m3u8"
+      // extension and the older bare ".m3u" playlist extension for what's
+      // still functionally an HLS/live stream - a plain <video src> can't
+      // parse either as a playlist, so both need to go through hls.js.
+      const lowerUrl = streamUrl.toLowerCase();
+      const isHLS = lowerUrl.includes('.m3u8') || lowerUrl.includes('.m3u');
 
       if (isHLS) {
         // Dynamically import HLS.js
@@ -75,10 +79,22 @@ export default function VideoPlayer({
               console.error('HLS error:', data);
               if (data.fatal) {
                 switch (data.type) {
-                  case Hls.ErrorTypes.NETWORK_ERROR:
-                    setError('Network error. Please check your connection.');
-                    hls.startLoad();
+                  case Hls.ErrorTypes.NETWORK_ERROR: {
+                    // HLS.js buckets both real connectivity failures and
+                    // the source's own CDN rejecting the request (401/403 -
+                    // common on crowd-sourced IPTV lists, where a stream is
+                    // geo-blocked or refuses playback outside its own app)
+                    // under the same NETWORK_ERROR type. Only the former is
+                    // worth auto-retrying.
+                    const status = data.response?.code;
+                    if (status === 401 || status === 403) {
+                      setError('This stream refused the connection (blocked by its source) - try a different channel.');
+                    } else {
+                      setError('Network error. Please check your connection.');
+                      hls.startLoad();
+                    }
                     break;
+                  }
                   case Hls.ErrorTypes.MEDIA_ERROR:
                     setError('Media error. Attempting recovery...');
                     hls.recoverMediaError();

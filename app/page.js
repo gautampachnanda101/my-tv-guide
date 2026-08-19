@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import VideoPlayer from "@/lib/components/VideoPlayer";
 
 const mainTabs = [
   { key: "home", label: "Home" },
@@ -44,6 +45,7 @@ function itemMatchesGenreTerm(item, term) {
     item.category,
     ...(Array.isArray(item.genres) ? item.genres : []),
     ...(Array.isArray(item.highlights) ? item.highlights : []),
+    ...(Array.isArray(item.languages) ? item.languages : []),
     item.name,
     item.show,
     item.title,
@@ -56,78 +58,133 @@ function itemMatchesGenreTerm(item, term) {
   return haystack.includes(term);
 }
 
-const appLinkById = {
-  freely: "https://www.freely.co.uk/",
-  iplayer: "https://www.bbc.co.uk/iplayer",
-  itvx: "https://www.itv.com/watch",
-  channel4: "https://www.channel4.com/",
-  my5: "https://www.channel5.com/",
-  u: "https://u.co.uk/",
-  "s4c-clic": "https://www.s4c.cymru/clic/",
-  "stv-player": "https://player.stv.tv/",
-  now: "https://www.nowtv.com/",
-  "discovery-plus": "https://www.discoveryplus.com/gb",
-  netflix: "https://www.netflix.com/",
-  "prime-video": "https://www.primevideo.com/",
-  "disney-plus": "https://www.disneyplus.com/",
-  "apple-tv-plus": "https://tv.apple.com/",
-  "paramount-plus": "https://www.paramountplus.com/",
-  hayu: "https://www.hayu.com/",
-  shudder: "https://www.shudder.com/",
-  mubi: "https://mubi.com/",
-  "rakuten-tv": "https://rakuten.tv/",
-  youtube: "https://www.youtube.com/",
-  plutotv: "https://pluto.tv/",
-  freevee: "https://www.amazon.co.uk/gp/video/storefront/ref=atv_dp_freevee",
-  tubitv: "https://tubitv.com/",
-  "xumo-play": "https://play.xumo.com/",
-  "samsung-tv-plus": "https://www.samsung.com/uk/tvs/smart-tv/samsung-tv-plus/",
-  "lg-channels": "https://www.lg.com/uk/lg-channels",
-  "roku-channel": "https://therokuchannel.roku.com/",
-  plex: "https://www.plex.tv/"
+function slugify(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+// Per-provider deep-linking strategy, ranked by confidence:
+//  - buildProgrammeUrl: goes straight to the show's own page.
+//  - buildSearchUrl: pre-fills that provider's own search with the title -
+//    not as good as a direct page (still requires the user to pick the
+//    right result), but far better than dumping them on a homepage.
+//  - Neither: no reliable pattern found. Falls back to the homepage.
+// Every pattern below was verified live (fetched and confirmed a real
+// result page) before being added. Two guessed-but-unverified patterns
+// (BBC iPlayer and Disney+ search) were tried and removed after live
+// testing showed they 404 / don't resolve - don't re-add a pattern here
+// without confirming it actually works first.
+// Channel4 and Channel5's own slugs are just the lowercased, hyphenated
+// show title, so a title-only guess actually lands on the real page for
+// most shows (confirmed: channel4.com/programmes/hit-point).
+const WATCH_PROVIDERS = {
+  freely: { homepage: "https://www.freely.co.uk/" },
+  // Confirmed broken by live testing: bbc.co.uk/iplayer/search?q= does not
+  // resolve to a real search page. bbc.co.uk also can't be verified from
+  // here (blocks automated fetches), so rather than guess again, this
+  // falls back to the homepage until a real pattern is confirmed.
+  iplayer: { homepage: "https://www.bbc.co.uk/iplayer" },
+  itvx: { homepage: "https://www.itv.com/watch" }, // no reliable pattern found (ITVX's search page didn't respond to verification attempts)
+  channel4: {
+    homepage: "https://www.channel4.com/",
+    buildProgrammeUrl: (title) => `https://www.channel4.com/programmes/${slugify(title)}`
+  },
+  my5: {
+    homepage: "https://www.channel5.com/",
+    buildProgrammeUrl: (title) => `https://www.channel5.com/show/${slugify(title)}`
+  },
+  u: { homepage: "https://u.co.uk/" },
+  "s4c-clic": { homepage: "https://www.s4c.cymru/clic/" },
+  "stv-player": { homepage: "https://player.stv.tv/" },
+  now: { homepage: "https://www.nowtv.com/" },
+  "discovery-plus": { homepage: "https://www.discoveryplus.com/gb" }, // guessed /gb/search pattern 404'd on verification - homepage only until a real one is confirmed
+  netflix: {
+    homepage: "https://www.netflix.com/",
+    buildSearchUrl: (title) => `https://www.netflix.com/search?q=${encodeURIComponent(title)}`
+  },
+  "prime-video": {
+    homepage: "https://www.primevideo.com/",
+    buildSearchUrl: (title) => `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${encodeURIComponent(title)}`
+  },
+  // Both guessed patterns (?q= and /search/{title}) 404'd on verification -
+  // homepage only until a real one is confirmed.
+  "disney-plus": { homepage: "https://www.disneyplus.com/" },
+  "apple-tv-plus": {
+    homepage: "https://tv.apple.com/",
+    buildSearchUrl: (title) => `https://tv.apple.com/search?term=${encodeURIComponent(title)}`
+  },
+  "paramount-plus": { homepage: "https://www.paramountplus.com/" },
+  hayu: { homepage: "https://www.hayu.com/" },
+  shudder: { homepage: "https://www.shudder.com/" },
+  mubi: { homepage: "https://mubi.com/" },
+  "rakuten-tv": { homepage: "https://rakuten.tv/" },
+  youtube: {
+    homepage: "https://www.youtube.com/",
+    buildSearchUrl: (title) => `https://www.youtube.com/results?search_query=${encodeURIComponent(title)}`
+  },
+  plutotv: { homepage: "https://pluto.tv/" },
+  freevee: { homepage: "https://www.amazon.co.uk/gp/video/storefront/ref=atv_dp_freevee" },
+  tubitv: { homepage: "https://tubitv.com/" },
+  "xumo-play": { homepage: "https://play.xumo.com/" },
+  "samsung-tv-plus": { homepage: "https://www.samsung.com/uk/tvs/smart-tv/samsung-tv-plus/" },
+  "lg-channels": { homepage: "https://www.lg.com/uk/lg-channels" },
+  "roku-channel": { homepage: "https://therokuchannel.roku.com/" },
+  plex: { homepage: "https://www.plex.tv/" }
 };
 
-const watchLinkByName = {
-  freely: appLinkById.freely,
-  "bbc iplayer": appLinkById.iplayer,
-  iplayer: appLinkById.iplayer,
-  "bbc one": appLinkById.freely,
-  "bbc two": appLinkById.freely,
-  "bbc three": appLinkById.freely,
-  "bbc four": appLinkById.freely,
-  "itv x": appLinkById.itvx,
-  itvx: appLinkById.itvx,
-  "channel 4": appLinkById.channel4,
-  "channel 4 app": appLinkById.channel4,
-  my5: appLinkById.my5,
-  "my 5": appLinkById.my5,
-  "channel 5": appLinkById.my5,
-  "5action": appLinkById.my5,
-  "5star": appLinkById.my5,
-  "5usa": appLinkById.my5,
-  "5select": appLinkById.my5,
-  now: appLinkById.now,
-  "now tv": appLinkById.now,
-  u: appLinkById.u,
-  "discovery+": appLinkById["discovery-plus"],
-  "disney+": appLinkById["disney-plus"],
-  "apple tv+": appLinkById["apple-tv-plus"],
-  "paramount+": appLinkById["paramount-plus"],
-  hayu: appLinkById.hayu,
-  shudder: appLinkById.shudder,
-  mubi: appLinkById.mubi,
-  youtube: appLinkById.youtube,
-  plutotv: appLinkById.plutotv,
-  "pluto tv": appLinkById.plutotv,
-  freevee: appLinkById.freevee,
-  tubitv: appLinkById.tubitv,
-  tubi: appLinkById.tubitv,
-  "xumo play": appLinkById["xumo-play"],
-  "samsung tv plus": appLinkById["samsung-tv-plus"],
-  "lg channels": appLinkById["lg-channels"],
-  "the roku channel": appLinkById["roku-channel"],
-  plex: appLinkById.plex
+const providerIdByName = {
+  freely: "freely",
+  "bbc iplayer": "iplayer",
+  iplayer: "iplayer",
+  "bbc one": "iplayer",
+  "bbc two": "iplayer",
+  "bbc three": "iplayer",
+  "bbc four": "iplayer",
+  "itv x": "itvx",
+  itvx: "itvx",
+  "channel 4": "channel4",
+  "channel 4 app": "channel4",
+  my5: "my5",
+  "my 5": "my5",
+  "channel 5": "my5",
+  "5action": "my5",
+  "5star": "my5",
+  "5usa": "my5",
+  "5select": "my5",
+  now: "now",
+  "now tv": "now",
+  u: "u",
+  "discovery+": "discovery-plus",
+  "disney+": "disney-plus",
+  "apple tv+": "apple-tv-plus",
+  "paramount+": "paramount-plus",
+  hayu: "hayu",
+  shudder: "shudder",
+  mubi: "mubi",
+  youtube: "youtube",
+  plutotv: "plutotv",
+  "pluto tv": "plutotv",
+  freevee: "freevee",
+  tubitv: "tubitv",
+  tubi: "tubitv",
+  "xumo play": "xumo-play",
+  "samsung tv plus": "samsung-tv-plus",
+  "lg channels": "lg-channels",
+  "the roku channel": "roku-channel",
+  plex: "plex"
 };
+
+function buildProviderUrl(providerId, title) {
+  const provider = WATCH_PROVIDERS[providerId];
+  if (!provider) return null;
+  if (title) {
+    if (provider.buildProgrammeUrl) return provider.buildProgrammeUrl(title);
+    if (provider.buildSearchUrl) return provider.buildSearchUrl(title);
+  }
+  return provider.homepage;
+}
 
 function formatDateTime(value) {
   if (!value) return "TBA";
@@ -166,6 +223,22 @@ function toLondonTimeMinutes(value) {
   const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
   const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
   return hour * 60 + minute;
+}
+
+// The timeline track only displays this window (see the rendered hour
+// labels below) - a channel whose programmes all fall outside it should not
+// get a row at all, otherwise it renders as a blank, seemingly-broken row.
+const TIMELINE_WINDOW_START_MINUTES = 14 * 60;
+const TIMELINE_WINDOW_END_MINUTES = 23 * 60;
+
+function isWithinTimelineWindow(item) {
+  const startMinutes = toLondonTimeMinutes(item.startAt);
+  const endMinutes = toLondonTimeMinutes(item.endAt) || (startMinutes !== null ? startMinutes + 30 : null);
+  if (startMinutes === null || endMinutes === null) return false;
+
+  const clippedStart = Math.max(startMinutes, TIMELINE_WINDOW_START_MINUTES);
+  const clippedEnd = Math.min(endMinutes, TIMELINE_WINDOW_END_MINUTES);
+  return clippedEnd > clippedStart;
 }
 
 function addDays(date, amount) {
@@ -212,6 +285,24 @@ function getProgrammeStatus(item) {
   }
 
   return `Starts ${formatDateTime(item.startAt)}`;
+}
+
+function buildUnifiedNowEntries(filteredLiveNow, filteredToday, filteredTvChannels, filteredStreamingApps) {
+  const now = Date.now();
+  const soonCutoff = now + 4 * 60 * 60 * 1000;
+  const liveIds = new Set(filteredLiveNow.map((item) => item.id));
+
+  const entries = [
+    ...filteredLiveNow.map((item) => ({ kind: "programme", badge: "LIVE", sortAt: 0, item })),
+    ...filteredToday
+      .filter((item) => !liveIds.has(item.id) && item.startAt && new Date(item.startAt).getTime() <= soonCutoff)
+      .map((item) => ({ kind: "programme", badge: "SOON", sortAt: new Date(item.startAt).getTime(), item })),
+    ...filteredTvChannels.map((item) => ({ kind: "channel", badge: "CHANNEL", sortAt: now + 1, item })),
+    ...filteredStreamingApps.map((item) => ({ kind: "app", badge: "APP", sortAt: now + 2, item }))
+  ];
+
+  entries.sort((a, b) => a.sortAt - b.sortAt);
+  return entries.slice(0, 12);
 }
 
 function highlightText(value, query) {
@@ -297,12 +388,20 @@ function getSourceLink(source) {
   return source.url || source.defaultUrl || null;
 }
 
-function getWatchViaLink(value) {
+function getWatchViaLink(value, title) {
   const key = String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9+]+/g, " ")
     .trim();
-  return watchLinkByName[key] || watchLinkByName[String(value || "").toLowerCase()] || null;
+  // Feed/simulcast variants ("5 HD", "ITV1 +1", "BBC One UK") carry the
+  // same broadcaster as their plain name, but aren't in the alias list
+  // verbatim - strip the variant suffix and retry once before giving up.
+  const bareKey = key.replace(/\s+(hd|sd|uk|\+1)$/, "").trim();
+  const providerId =
+    providerIdByName[key] ||
+    providerIdByName[String(value || "").toLowerCase()] ||
+    (bareKey !== key ? providerIdByName[bareKey] : null);
+  return providerId ? buildProviderUrl(providerId, title) : null;
 }
 
 function pushUniqueTarget(targets, seen, label, href) {
@@ -314,37 +413,43 @@ function pushUniqueTarget(targets, seen, label, href) {
 function getWatchTargets(item, type = "programme") {
   const targets = [];
   const seen = new Set();
+  const title = item.show || item.title || item.name;
 
   if (type === "app") {
-    const href = getAppLink(item);
+    const href = getAppLink(item, title);
     if (href) {
       targets.push({ label: "Open app", href });
     }
     return targets;
   }
 
-  if (item.streamUrl) pushUniqueTarget(targets, seen, "Open direct stream", item.streamUrl);
+  // item.streamUrl is intentionally not offered here - it's a raw stream
+  // manifest, not a page; it's played in-app via the "Play here" button.
   if (item.url) pushUniqueTarget(targets, seen, "Open programme page", item.url);
   if (item.channelWebsite) pushUniqueTarget(targets, seen, "Open channel site", item.channelWebsite);
 
   for (const hint of toArray(item.watchVia)) {
-    const href = getWatchViaLink(hint);
+    const href = getWatchViaLink(hint, title);
     if (href) pushUniqueTarget(targets, seen, `Watch on ${hint}`, href);
   }
 
   return targets;
 }
 
+// Deliberately excludes item.streamUrl: that's a raw HLS/video manifest,
+// not a browsable page - navigating straight to it 404s or gets rejected
+// by the CDN (no Referer/player context). It's played in-app instead (see
+// the "Play here" button), never used as this external link.
 function getProgrammeLink(item) {
-  return item.url || item.streamUrl || getWatchTargets(item, "programme")[0]?.href || null;
+  return item.url || getWatchTargets(item, "programme")[0]?.href || null;
 }
 
 function getChannelLink(item) {
-  return item.url || item.streamUrl || item.website || item.channelWebsite || getWatchTargets(item, "channel")[0]?.href || null;
+  return getWatchTargets(item, "channel")[0]?.href || item.url || item.website || item.channelWebsite || null;
 }
 
-function getAppLink(item) {
-  return appLinkById[item.id] || item.website || null;
+function getAppLink(item, title) {
+  return buildProviderUrl(item.id, title) || item.website || null;
 }
 
 export default function HomePage() {
@@ -358,6 +463,7 @@ export default function HomePage() {
   const [timelineDayOffset, setTimelineDayOffset] = useState(0);
   const [isTimelinePending, startTimelineTransition] = useTransition();
   const [selectedItem, setSelectedItem] = useState(null);
+  const [playingStream, setPlayingStream] = useState(null);
   const [isFeaturedCompact, setIsFeaturedCompact] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -477,10 +583,12 @@ export default function HomePage() {
   }, [guide.tvChannels]);
 
   const channelOptions = useMemo(() => {
-    return guide.tvChannels
-      .map((item) => String(item.name || ""))
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b));
+    // Dedupe by name: at global IPTV-org scale, many channels in different
+    // countries share a name (e.g. several "Agro TV"s), and schedule items
+    // only ever carry a channel name string (no per-country id) to filter
+    // against, so duplicate-named options would be indistinguishable noise.
+    const unique = new Set(guide.tvChannels.map((item) => String(item.name || "")).filter(Boolean));
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [guide.tvChannels]);
 
   const appOptions = useMemo(() => {
@@ -490,6 +598,14 @@ export default function HomePage() {
   }, [guide.streamingApps]);
 
   const selectedApp = appLookup.get(appFilter) || null;
+  // Apps that carry no live linear channel (Netflix, Disney+, etc.) are
+  // on-demand only - their catalog is available anytime, so "Today"/"Live
+  // Now"/"Upcoming" schedules will never have anything for them. Apps with
+  // a `channels` list (iPlayer, ITVX, NOW, ...) simulcast real broadcasts
+  // and so genuinely do have a live schedule.
+  const selectedAppHasLiveChannels = selectedApp
+    ? Array.isArray(selectedApp.channels) && selectedApp.channels.length > 0
+    : null;
   const selectedAppNeedles = useMemo(() => {
     if (!selectedApp) return [];
     const needles = [String(selectedApp.id).toLowerCase(), String(selectedApp.name || "").toLowerCase()];
@@ -557,7 +673,13 @@ export default function HomePage() {
     [filteredToday, filteredLiveNow, filteredUpcoming, filteredTvChannels, filteredStreamingApps]
   );
 
-  const headlineCount = counts.today + counts.liveNow + counts.upcoming;
+  // The hero's top-line stats are a "how much data does this app have"
+  // trust indicator, shown on the Home tab where no filter controls are
+  // visible - they must stay unfiltered, or setting a filter in Browse and
+  // switching to Home makes the app look like it suddenly has no data.
+  const globalHeadlineCount = guide.today.length + guide.liveNow.length + guide.upcoming.length;
+  const hasActiveFilter = Boolean(query.trim() || channelFilter || appFilter);
+  const activeAppOrChannelLabel = channelFilter || selectedApp?.name || "";
   const displayCount = (value, label) => (loading ? label : value);
   const activeTabCount = counts[browseTab] || 0;
   const activeTabLabel = browseTabs.find((item) => item.key === browseTab)?.label || "results";
@@ -595,10 +717,14 @@ export default function HomePage() {
 
     const result = {};
     for (const [dayKey, channelMap] of byDay.entries()) {
-      const rows = Array.from(channelMap.entries()).map(([channel, items]) => ({
-        channel,
-        items: items.sort((a, b) => new Date(a.startAt || 0) - new Date(b.startAt || 0))
-      }));
+      const rows = Array.from(channelMap.entries())
+        .map(([channel, items]) => ({
+          channel,
+          items: items
+            .filter(isWithinTimelineWindow)
+            .sort((a, b) => new Date(a.startAt || 0) - new Date(b.startAt || 0))
+        }))
+        .filter((row) => row.items.length > 0);
 
       rows.sort((a, b) => b.items.length - a.items.length);
       result[dayKey] = rows.slice(0, 14);
@@ -622,6 +748,15 @@ export default function HomePage() {
   }, [filteredLiveNow, filteredToday, filteredUpcoming]);
   const featuredVisible = isFeaturedCompact ? featuredNow.slice(0, 3) : featuredNow;
 
+  // Answers "what's on for X, and where, right now" in one glance instead
+  // of forcing a click through Today / Live Now / TV Channels / Streaming
+  // Apps separately. Only shown when a search/genre filter is active - it's
+  // the merged view the plain per-category tabs below don't provide.
+  const unifiedNowResults = useMemo(
+    () => (hasActiveFilter ? buildUnifiedNowEntries(filteredLiveNow, filteredToday, filteredTvChannels, filteredStreamingApps) : []),
+    [hasActiveFilter, filteredLiveNow, filteredToday, filteredTvChannels, filteredStreamingApps]
+  );
+
   function openDetails(item, type = "programme") {
     if (!item) return;
     const destination =
@@ -642,6 +777,13 @@ export default function HomePage() {
     setBrowseTab(filter.tab);
     setQueryInput(filter.query);
     setIsSidebarOpen(false);
+  }
+
+  function clearFilters() {
+    setChannelFilter("");
+    setAppFilter("");
+    setQuery("");
+    setQueryInput("");
   }
 
   return (
@@ -768,9 +910,9 @@ export default function HomePage() {
             by open TV data and designed for fast decisions.
           </p>
           <div className="hero-meta">
-            <span>{displayCount(`${headlineCount} programmes indexed now`, "Loading programmes...")}</span>
-            <span>{displayCount(`${counts.tvChannels} channels aggregated`, "Loading channels...")}</span>
-            <span>{displayCount(`${counts.streamingApps} streaming services`, "Loading apps...")}</span>
+            <span>{displayCount(`${globalHeadlineCount} programmes indexed now`, "Loading programmes...")}</span>
+            <span>{displayCount(`${guide.tvChannels.length} channels aggregated`, "Loading channels...")}</span>
+            <span>{displayCount(`${guide.streamingApps.length} streaming services`, "Loading apps...")}</span>
           </div>
           <div className="hero-actions">
             <button type="button" className="cta cta-primary" onClick={() => { setMainTab("browse"); setBrowseTab("liveNow"); }}>Go Live</button>
@@ -780,7 +922,7 @@ export default function HomePage() {
         <div className="hero-radar">
           <div className="hero-radar-card">
             <p className="hero-radar-label">Signal Board</p>
-            <h2>What is live right now</h2>
+            <h2>{hasActiveFilter ? `Live now for "${query || activeAppOrChannelLabel}"` : "What is live right now"}</h2>
             <p className="hero-radar-copy">
               A fast read on the strongest things on air, with direct watch paths when they exist.
             </p>
@@ -802,26 +944,46 @@ export default function HomePage() {
                   <p className="meta">{featuredNow[0].channel}</p>
                 </div>
               </button>
+            ) : hasActiveFilter ? (
+              <p className="hero-radar-copy">
+                Nothing matches this filter right now.{" "}
+                <button type="button" className="link-button" onClick={clearFilters}>Clear filters</button> to see everything.
+              </p>
             ) : null}
           </div>
           <div className="hero-radar-signal">
             <div>
               <span className="hero-radar-kicker">Direct watch paths</span>
-              <strong>{displayCount(`${counts.streamingApps} apps`, "Loading...")}</strong>
+              <strong>{displayCount(`${guide.streamingApps.length} apps`, "Loading...")}</strong>
             </div>
             <div>
               <span className="hero-radar-kicker">Live channel supply</span>
-              <strong>{displayCount(`${counts.tvChannels} channels`, "Loading...")}</strong>
+              <strong>{displayCount(`${guide.tvChannels.length} channels`, "Loading...")}</strong>
             </div>
             <div>
               <span className="hero-radar-kicker">Tonight total</span>
-              <strong>{displayCount(`${headlineCount} programmes`, "Loading...")}</strong>
+              <strong>{displayCount(`${globalHeadlineCount} programmes`, "Loading...")}</strong>
             </div>
           </div>
         </div>
       </section>
 
-      {!loading && !error && featuredNow.length > 0 ? (
+      <div className="main-nav" role="tablist" aria-label="Main sections">
+        {mainTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={mainTab === tab.key}
+            className={mainTab === tab.key ? "main-nav-tab active" : "main-nav-tab"}
+            onClick={() => setMainTab(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {mainTab === "home" && !loading && !error && featuredNow.length > 0 ? (
         <section className={isFeaturedCompact ? "panel spotlight-panel compact" : "panel spotlight-panel"}>
           <div className="section-title-row">
             <h2>Featured Right Now</h2>
@@ -859,11 +1021,14 @@ export default function HomePage() {
         </section>
       ) : null}
 
-      {!loading && !error ? (
+      {mainTab === "timeline" && !loading && !error ? (
         <section className="panel timeline-panel">
           <div className="section-title-row">
             <h2>Timeline Guide</h2>
-            <p className="state">{selectedTimelineLabel} • Times in UK (Europe/London)</p>
+            <p className="state">
+              {selectedTimelineLabel} • {String(TIMELINE_WINDOW_START_MINUTES / 60).padStart(2, "0")}:00–
+              {String(TIMELINE_WINDOW_END_MINUTES / 60).padStart(2, "0")}:00 • Times in UK (Europe/London)
+            </p>
           </div>
 
           <div className="timeline-days-wrap">
@@ -922,7 +1087,13 @@ export default function HomePage() {
               ))}
             </div>
 
-            {timelineRows.length === 0 ? <p className="state">No schedule data for this day yet.</p> : null}
+            {timelineRows.length === 0 ? (
+              <p className="state">
+                Nothing airing {String(TIMELINE_WINDOW_START_MINUTES / 60).padStart(2, "0")}:00–
+                {String(TIMELINE_WINDOW_END_MINUTES / 60).padStart(2, "0")}:00 on {selectedTimelineLabel.toLowerCase()}.
+                Try the Browse tab&apos;s Live Now / Today lists for programmes outside this window.
+              </p>
+            ) : null}
 
             {timelineRows.map((row) => (
               <div key={row.channel} className="timeline-row">
@@ -932,15 +1103,15 @@ export default function HomePage() {
                 </div>
                 <div className="timeline-track">
                   {row.items.map((item) => {
+                    // row.items is already filtered to this window (see
+                    // timelineRowsByDay / isWithinTimelineWindow), so every
+                    // item here is guaranteed to intersect it.
                     const startMinutes = toLondonTimeMinutes(item.startAt);
-                    const endMinutes = toLondonTimeMinutes(item.endAt) || (startMinutes ? startMinutes + 30 : null);
-                    if (startMinutes === null || endMinutes === null) return null;
-
-                    const windowStart = 14 * 60;
-                    const windowEnd = 23 * 60;
+                    const endMinutes = toLondonTimeMinutes(item.endAt) || startMinutes + 30;
+                    const windowStart = TIMELINE_WINDOW_START_MINUTES;
+                    const windowEnd = TIMELINE_WINDOW_END_MINUTES;
                     const clippedStart = Math.max(startMinutes, windowStart);
                     const clippedEnd = Math.min(endMinutes, windowEnd);
-                    if (clippedEnd <= clippedStart) return null;
 
                     const left = ((clippedStart - windowStart) / (windowEnd - windowStart)) * 100;
                     const width = ((clippedEnd - clippedStart) / (windowEnd - windowStart)) * 100;
@@ -975,6 +1146,8 @@ export default function HomePage() {
         </section>
       ) : null}
 
+      {mainTab === "browse" ? (
+      <>
       <section className="panel">
         <h2>Search and Region</h2>
         <div className="controls-grid">
@@ -1031,12 +1204,7 @@ export default function HomePage() {
           <button
             type="button"
             className="ghost"
-            onClick={() => {
-              setChannelFilter("");
-              setAppFilter("");
-              setQuery("");
-              setQueryInput("");
-            }}
+            onClick={clearFilters}
             disabled={!channelFilter && !appFilter && !query.trim()}
           >
             Clear filters
@@ -1044,29 +1212,99 @@ export default function HomePage() {
         </div>
 
         <div className="quick-filters" role="group" aria-label="Quick search filters">
-          {quickFilters.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              className={query.toLowerCase() === item.query ? "quick-chip active" : "quick-chip"}
-              onClick={() => {
-                if (query.toLowerCase() === item.query) {
-                  // Clicking an active filter removes it
-                  setQuery("");
-                  setQueryInput("");
-                } else {
-                  // Clicking a new filter applies it
-                  setQuery(item.query);
-                  setQueryInput(item.query);
-                  setBrowseTab(item.tab);
-                }
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+          {quickFilters.map((item) => {
+            // Match on browseTab too, not just query: several chips (e.g.
+            // the non-genre "Streaming" chip) share an empty query with the
+            // unfiltered default state, so query alone can't tell "no
+            // filter applied" apart from "this chip is selected."
+            const isActive = query.toLowerCase() === item.query && browseTab === item.tab;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                className={isActive ? "quick-chip active" : "quick-chip"}
+                onClick={() => {
+                  if (isActive) {
+                    // Clicking an active filter removes it
+                    setQuery("");
+                    setQueryInput("");
+                  } else {
+                    // Clicking a new filter applies it
+                    setQuery(item.query);
+                    setQueryInput(item.query);
+                    setBrowseTab(item.tab);
+                  }
+                }}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       </section>
+
+      {hasActiveFilter ? (
+        <section className="panel">
+          <div className="section-title-row">
+            <h2>Right now for &quot;{query || activeAppOrChannelLabel}&quot;</h2>
+          </div>
+          <p className="state">
+            Live and starting-soon programmes, channels, and apps that match - merged in one place instead of
+            checking each tab separately.
+          </p>
+
+          {unifiedNowResults.length === 0 ? (
+            <p className="state">Nothing matches right now. Try a broader term, or check Upcoming for later today.</p>
+          ) : (
+            <ul className="listing-grid visual">
+              {unifiedNowResults.map(({ kind, badge, item }) => {
+                if (kind === "programme") {
+                  return (
+                    <li key={`p-${item.id}`} className="listing-card">
+                      <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
+                        <MediaThumb image={item.image} label={item.show || item.channel} tag={badge} />
+                        <div className="card-body">
+                          <h3>{highlightText(item.show, query)}</h3>
+                          <p className="meta">{item.channel}</p>
+                          <p className="meta">
+                            {badge === "LIVE" ? `Started ${formatTime(item.startAt)}` : `Starts ${formatTime(item.startAt)}`}
+                          </p>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                }
+                if (kind === "channel") {
+                  return (
+                    <li key={`c-${item.id}`} className="listing-card">
+                      <button type="button" className="card-link card-button" onClick={() => openDetails(item, "channel")}>
+                        <MediaThumb image={item.logo} label={item.name} tag="CHANNEL" />
+                        <div className="card-body">
+                          <h3>{item.name}</h3>
+                          <p className="meta">{toArray(item.watchVia).join(", ") || item.access}</p>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                }
+                return (
+                  <li key={`a-${item.id}`} className="listing-card">
+                    <button type="button" className="card-link card-button" onClick={() => openDetails(item, "app")}>
+                      <MediaThumb image={item.logo} label={item.name} tag="APP" />
+                      <div className="card-body">
+                        <h3>{item.name}</h3>
+                        <p className="meta availability-tag">
+                          {Array.isArray(item.channels) && item.channels.length > 0 ? "Has live channels" : "On-demand only"}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
       <section className="panel">
         <div className="section-title-row">
@@ -1112,7 +1350,11 @@ export default function HomePage() {
         ) : null}
 
         {!loading && !error && browseTab === "today" && filteredToday.length === 0 ? (
-          <p className="state">No programmes found for today with this search.</p>
+          <p className="state">
+            {selectedAppHasLiveChannels === false
+              ? `${selectedApp.name} is on-demand - its shows are available anytime, so they won't show up in a daily schedule. Check the Streaming Apps tab instead.`
+              : "No programmes found for today with this search."}
+          </p>
         ) : null}
         {!loading && !error && browseTab === "today" && filteredToday.length > 0 ? (
           <ul className="listing-grid visual">
@@ -1135,7 +1377,11 @@ export default function HomePage() {
         ) : null}
 
         {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length === 0 ? (
-          <p className="state">No programmes are marked as live right now.</p>
+          <p className="state">
+            {selectedAppHasLiveChannels === false
+              ? `${selectedApp.name} is on-demand - it has no "live" concept, its whole catalog is available anytime. Check the Streaming Apps tab instead.`
+              : "No programmes are marked as live right now."}
+          </p>
         ) : null}
         {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length > 0 ? (
           <ul className="listing-grid visual">
@@ -1158,7 +1404,11 @@ export default function HomePage() {
         ) : null}
 
         {!loading && !error && browseTab === "upcoming" && filteredUpcoming.length === 0 ? (
-          <p className="state">No upcoming programmes match this search.</p>
+          <p className="state">
+            {selectedAppHasLiveChannels === false
+              ? `${selectedApp.name} is on-demand - there's no "upcoming" schedule, its shows are already available now. Check the Streaming Apps tab instead.`
+              : "No upcoming programmes match this search."}
+          </p>
         ) : null}
         {!loading && !error && browseTab === "upcoming" && filteredUpcoming.length > 0 ? (
           <ul className="listing-grid visual">
@@ -1192,6 +1442,9 @@ export default function HomePage() {
                   <div className="card-body">
                     <h3>{item.name}</h3>
                     <p>{item.access}</p>
+                    {Array.isArray(item.languages) && item.languages.length > 0 ? (
+                      <p className="meta">Language: {item.languages.join(", ")}</p>
+                    ) : null}
                     <p className="meta">Watch via: {item.watchVia.join(", ")}</p>
                     <p className="meta card-cta">View details</p>
                   </div>
@@ -1216,6 +1469,11 @@ export default function HomePage() {
                     <p>{item.priceModel}</p>
                     <p className="meta">Platforms: {item.platforms.join(", ")}</p>
                     <p className="meta">Highlights: {item.highlights.join(" • ")}</p>
+                    <p className="meta availability-tag">
+                      {Array.isArray(item.channels) && item.channels.length > 0
+                        ? `Live channels: ${item.channels.length}`
+                        : "On-demand only - available anytime"}
+                    </p>
                     <p className="meta card-cta">View details</p>
                   </div>
                 </button>
@@ -1224,6 +1482,8 @@ export default function HomePage() {
           </ul>
         ) : null}
       </section>
+      </>
+      ) : null}
 
       {selectedItem ? (
         <div className="detail-overlay" role="dialog" aria-modal="true" aria-label="Programme details">
@@ -1249,6 +1509,12 @@ export default function HomePage() {
                 </p>
               ) : null}
               <p className="detail-summary">{trimSummary(selectedItem.item.summary, 300)}</p>
+              {selectedItem.item.isStreaming && selectedItem.item.streamingOn?.length > 0 ? (
+                <p className="detail-meta streaming-elsewhere">
+                  Also streaming on: {selectedItem.item.streamingOn.join(", ")}
+                  <span className="attribution"> (streaming data via JustWatch)</span>
+                </p>
+              ) : null}
               <p className="watch-title">Where to watch</p>
               <div className="watch-links" aria-label="Watch options">
                 {getWatchTargets(selectedItem.item, selectedItem.type).map((entry) => (
@@ -1258,19 +1524,52 @@ export default function HomePage() {
                 ))}
               </div>
               <div className="detail-actions">
+                {selectedItem.item.streamUrl ? (
+                  <button
+                    type="button"
+                    className="cta cta-primary"
+                    onClick={() => {
+                      setPlayingStream({
+                        streamUrl: selectedItem.item.streamUrl,
+                        channelName: selectedItem.item.channel || selectedItem.item.name || "Live stream",
+                        title: selectedItem.item.show || selectedItem.item.title || null
+                      });
+                      closeDetails();
+                    }}
+                  >
+                    ▶ Play here
+                  </button>
+                ) : null}
                 {selectedItem.destination ? (
-                  <a href={selectedItem.destination} target="_blank" rel="noreferrer" className="cta cta-primary">
+                  <a
+                    href={selectedItem.destination}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={selectedItem.item.streamUrl ? "cta cta-secondary" : "cta cta-primary"}
+                  >
                     Watch / Open
                   </a>
-                ) : (
+                ) : !selectedItem.item.streamUrl ? (
                   <span className="state">No direct stream link available yet for this listing.</span>
-                )}
+                ) : null}
                 <button type="button" className="cta cta-secondary" onClick={closeDetails}>
                   Back to guide
                 </button>
               </div>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {playingStream ? (
+        <div className="detail-overlay" role="dialog" aria-modal="true" aria-label="Video player">
+          <VideoPlayer
+            streamUrl={playingStream.streamUrl}
+            channelName={playingStream.channelName}
+            title={playingStream.title}
+            autoPlay
+            onClose={() => setPlayingStream(null)}
+          />
         </div>
       ) : null}
     </main>
