@@ -24,3 +24,6 @@ pnpm-debug.log*
 # vercel
 .vercel
 .env*
+
+# local encrypted credential store (see lib/security)
+/.data

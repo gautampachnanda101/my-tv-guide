@@ -17,18 +17,44 @@ const browseTabs = [
   { key: "streamingApps", label: "Streaming Apps" }
 ];
 
-const quickFilters = [
-  { label: "Sports", query: "sport", tab: "tvChannels" },
-  { label: "Football", query: "football", tab: "today" },
-  { label: "News", query: "news", tab: "liveNow" },
-  { label: "Drama", query: "drama", tab: "upcoming" },
-  { label: "Movies", query: "movie", tab: "upcoming" },
-  { label: "Hindi", query: "hindi", tab: "tvChannels" },
-  { label: "Punjabi", query: "punjabi", tab: "tvChannels" },
-  { label: "Bollywood", query: "bollywood", tab: "upcoming" },
-  { label: "Hollywood", query: "hollywood", tab: "upcoming" },
-  { label: "Streaming", query: "", tab: "streamingApps" }
+// Candidate quick filters with their user-friendly display labels. Which of
+// these actually render is decided at runtime from the loaded data (see
+// `useAvailableQuickFilters` below) - a chip only appears when a programme,
+// channel, or streaming app is actually available for it right now.
+const QUICK_FILTER_CANDIDATES = [
+  { label: "Sport", query: "sport", tab: "tvChannels", checkPools: ["tvChannels", "today", "liveNow", "upcoming"] },
+  { label: "Football", query: "football", tab: "today", checkPools: ["today", "liveNow", "upcoming"] },
+  { label: "News", query: "news", tab: "liveNow", checkPools: ["liveNow", "tvChannels", "today"] },
+  { label: "Drama", query: "drama", tab: "upcoming", checkPools: ["upcoming", "today", "liveNow"] },
+  { label: "Movies", query: "movie", tab: "upcoming", checkPools: ["upcoming", "today", "liveNow"] },
+  { label: "Hindi", query: "hindi", tab: "tvChannels", checkPools: ["tvChannels", "upcoming", "today"] },
+  { label: "Punjabi", query: "punjabi", tab: "tvChannels", checkPools: ["tvChannels", "upcoming", "today"] },
+  { label: "Bollywood", query: "bollywood", tab: "upcoming", checkPools: ["upcoming", "today", "liveNow", "tvChannels"] },
+  { label: "Hollywood", query: "hollywood", tab: "upcoming", checkPools: ["upcoming", "today", "liveNow"] },
+  { label: "Streaming", query: "", tab: "streamingApps", checkPools: ["streamingApps"] }
 ];
+
+function normalizeFilterText(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function itemMatchesGenreTerm(item, term) {
+  const haystack = [
+    item.genre,
+    item.category,
+    ...(Array.isArray(item.genres) ? item.genres : []),
+    ...(Array.isArray(item.highlights) ? item.highlights : []),
+    item.name,
+    item.show,
+    item.title,
+    item.channel
+  ]
+    .filter(Boolean)
+    .map(normalizeFilterText)
+    .join(" ");
+
+  return haystack.includes(term);
+}
 
 const appLinkById = {
   freely: "https://www.freely.co.uk/",
@@ -423,6 +449,25 @@ export default function HomePage() {
     return new Map(guide.streamingApps.map((item) => [String(item.id), item]));
   }, [guide.streamingApps]);
 
+  const quickFilters = useMemo(() => {
+    const pools = {
+      today: guide.today,
+      liveNow: guide.liveNow,
+      upcoming: guide.upcoming,
+      tvChannels: guide.tvChannels,
+      streamingApps: guide.streamingApps
+    };
+
+    return QUICK_FILTER_CANDIDATES.filter((filter) => {
+      const term = normalizeFilterText(filter.query);
+      return filter.checkPools.some((poolName) => {
+        const pool = pools[poolName] || [];
+        if (!term) return pool.length > 0;
+        return pool.some((item) => itemMatchesGenreTerm(item, term));
+      });
+    });
+  }, [guide.today, guide.liveNow, guide.upcoming, guide.tvChannels, guide.streamingApps]);
+
   const channelToWatchVia = useMemo(() => {
     const lookup = new Map();
     for (const channel of guide.tvChannels) {
@@ -728,8 +773,8 @@ export default function HomePage() {
             <span>{displayCount(`${counts.streamingApps} streaming services`, "Loading apps...")}</span>
           </div>
           <div className="hero-actions">
-            <button type="button" className="cta cta-primary" onClick={() => setTab("liveNow")}>Go Live</button>
-            <button type="button" className="cta cta-secondary" onClick={() => setTab("upcoming")}>See Tonight</button>
+            <button type="button" className="cta cta-primary" onClick={() => { setMainTab("browse"); setBrowseTab("liveNow"); }}>Go Live</button>
+            <button type="button" className="cta cta-secondary" onClick={() => { setMainTab("browse"); setBrowseTab("upcoming"); }}>See Tonight</button>
           </div>
         </div>
         <div className="hero-radar">

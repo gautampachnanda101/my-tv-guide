@@ -246,6 +246,7 @@ export default function VideoPlayer({
       </div>
 
       <div className={styles.videoWrapper}>
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live stream has no captions track available */}
         <video
           ref={videoRef}
           className={styles.video}
