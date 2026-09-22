@@ -31,13 +31,54 @@ export default function VideoPlayer({
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [playlistEntries, setPlaylistEntries] = useState([]);
+  const [selectedPlaylistUrl, setSelectedPlaylistUrl] = useState("");
+  const [playlistLoading, setPlaylistLoading] = useState(false);
+
+  const isChannelPlaylist = /\.m3u(?:$|\?)/i.test(streamUrl || "") && !/\.m3u8(?:$|\?)/i.test(streamUrl || "");
+  const activeStreamUrl = isChannelPlaylist ? selectedPlaylistUrl : streamUrl;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isChannelPlaylist) {
+      setPlaylistEntries([]);
+      setSelectedPlaylistUrl("");
+      return undefined;
+    }
+
+    setPlaylistLoading(true);
+    setError(null);
+    fetch(`/api/playlist?url=${encodeURIComponent(streamUrl)}`)
+      .then(async (response) => {
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Could not load playlist");
+        return payload.entries || [];
+      })
+      .then((entries) => {
+        if (cancelled) return;
+        setPlaylistEntries(entries);
+        setSelectedPlaylistUrl(entries[0]?.url || "");
+        if (entries.length === 0) setError("This M3U playlist contains no playable streams.");
+      })
+      .catch((error) => {
+        if (!cancelled) setError(error.message || "Could not load M3U playlist.");
+      })
+      .finally(() => {
+        if (!cancelled) setPlaylistLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isChannelPlaylist, streamUrl]);
 
   // Load HLS.js dynamically (only on client)
   useEffect(() => {
     let hls = null;
     
     const initPlayer = async () => {
-      if (!streamUrl || !videoRef.current) return;
+      if (!activeStreamUrl || !videoRef.current) return;
 
       setError(null);
       setIsLoading(true);
@@ -48,7 +89,7 @@ export default function VideoPlayer({
       // extension and the older bare ".m3u" playlist extension for what's
       // still functionally an HLS/live stream - a plain <video src> can't
       // parse either as a playlist, so both need to go through hls.js.
-      const lowerUrl = streamUrl.toLowerCase();
+      const lowerUrl = activeStreamUrl.toLowerCase();
       const isHLS = lowerUrl.includes('.m3u8') || lowerUrl.includes('.m3u');
 
       if (isHLS) {
@@ -62,7 +103,7 @@ export default function VideoPlayer({
               lowLatencyMode: true,
             });
 
-            hls.loadSource(streamUrl);
+            hls.loadSource(activeStreamUrl);
             hls.attachMedia(video);
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -109,7 +150,7 @@ export default function VideoPlayer({
             hlsRef.current = hls;
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             // Native HLS support (Safari)
-            video.src = streamUrl;
+            video.src = activeStreamUrl;
             setIsLoading(false);
             if (autoPlay) {
               video.play().catch(e => {
@@ -126,7 +167,7 @@ export default function VideoPlayer({
         }
       } else {
         // Direct video source
-        video.src = streamUrl;
+        video.src = activeStreamUrl;
         setIsLoading(false);
         if (autoPlay) {
           video.play().catch(e => {
@@ -146,7 +187,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [streamUrl, autoPlay]);
+  }, [activeStreamUrl, autoPlay]);
 
   // Handle play/pause
   const togglePlay = () => {
@@ -250,6 +291,16 @@ export default function VideoPlayer({
           <h3 className={styles.channelName}>{channelName}</h3>
           {title && <p className={styles.showTitle}>{title}</p>}
         </div>
+        {isChannelPlaylist && playlistEntries.length > 0 ? (
+          <label className={styles.playlistSelect}>
+            <span className={styles.srOnly}>Choose channel</span>
+            <select value={selectedPlaylistUrl} onChange={(event) => setSelectedPlaylistUrl(event.target.value)}>
+              {playlistEntries.map((entry) => (
+                <option key={entry.id} value={entry.url}>{entry.title}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {onClose && (
           <button 
             onClick={onClose} 
@@ -271,10 +322,10 @@ export default function VideoPlayer({
           controls={false}
         />
         
-        {isLoading && (
+        {(isLoading || playlistLoading) && (
           <div className={styles.loadingOverlay}>
             <div className={styles.spinner}></div>
-            <p>Loading stream...</p>
+            <p>{playlistLoading ? "Loading channel list..." : "Loading stream..."}</p>
           </div>
         )}
 

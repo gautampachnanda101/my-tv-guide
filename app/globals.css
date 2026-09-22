@@ -653,11 +653,13 @@ h2 {
   display: grid;
   grid-template-columns: 200px 1fr;
   gap: 1.2rem;
+  align-items: start;
 }
 
 .control-item {
   display: grid;
   gap: 0.5rem;
+  align-content: start;
 }
 
 .control-item > span:first-child {
@@ -708,7 +710,7 @@ h2 {
 .filter-row {
   margin-top: 1.2rem;
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   gap: 1rem;
   align-items: end;
 }
@@ -1017,9 +1019,9 @@ h2 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
-  padding: 0.72rem 0.9rem;
-  border-radius: 14px;
+  min-height: 48px;
+  padding: 0.72rem 1rem;
+  border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.08);
   color: #f7fbff;
@@ -1060,11 +1062,35 @@ h2 {
   object-fit: cover;
 }
 
+.thumb-img-contain {
+  object-fit: contain;
+  padding: 1rem;
+}
+
 .thumb-fallback {
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-shadow: 0 1px 10px rgba(2, 6, 23, 0.38);
+}
+
+.thumb-fallback-art {
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  max-width: 82%;
+  text-align: center;
+}
+
+.thumb-fallback-label {
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thumb-tag {

@@ -39,6 +39,57 @@ function normalizeFilterText(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
+const GENRE_ALIASES = {
+  sport: "sports",
+  sports: "sports",
+  film: "movies",
+  films: "movies",
+  movie: "movies",
+  movies: "movies",
+  documentary: "documentaries",
+  documentaries: "documentaries",
+};
+
+const GENRE_LABELS = {
+  sports: "Sports",
+  movies: "Movies",
+  documentaries: "Documentaries",
+  comedy: "Comedy",
+  xxx: "XXX"
+};
+
+function genreDisplayLabel(value) {
+  return String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(" ");
+}
+
+function canonicalGenre(value) {
+  const normalized = normalizeFilterText(value);
+  return GENRE_ALIASES[normalized] || normalized;
+}
+
+const REGION_NAME_OVERRIDES = {
+  UK: "United Kingdom",
+  US: "United States",
+  EU: "European Union",
+  INT: "International"
+};
+
+function regionDisplayName(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) return "Unknown region";
+  if (REGION_NAME_OVERRIDES[normalized]) return REGION_NAME_OVERRIDES[normalized];
+
+  try {
+    return new Intl.DisplayNames(["en"], { type: "region" }).of(normalized) || normalized;
+  } catch {
+    return normalized;
+  }
+}
+
 function itemMatchesGenreTerm(item, term) {
   const haystack = [
     item.genre,
@@ -59,11 +110,11 @@ function itemMatchesGenreTerm(item, term) {
 }
 
 function itemHasGenre(item, genre) {
-  const wanted = normalizeFilterText(genre);
+  const wanted = canonicalGenre(genre);
   if (!wanted) return true;
 
   return [item?.genre, item?.category, ...toArray(item?.genres)].some(
-    (value) => normalizeFilterText(value) === wanted
+    (value) => canonicalGenre(value) === wanted
   );
 }
 
@@ -360,7 +411,7 @@ function trimSummary(value, max = 140) {
   return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 }
 
-function MediaThumb({ image, label, tag }) {
+function MediaThumb({ image, label, tag, fit = "cover" }) {
   const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
@@ -373,7 +424,7 @@ function MediaThumb({ image, label, tag }) {
         <Image
           src={image}
           alt={`${label} artwork`}
-          className="thumb-img"
+          className={fit === "contain" ? "thumb-img thumb-img-contain" : "thumb-img"}
           fill
           sizes="152px"
           unoptimized
@@ -387,7 +438,10 @@ function MediaThumb({ image, label, tag }) {
 
   return (
     <div className="thumb-wrap" style={{ background: fallbackGradient(label) }}>
-      <div className="thumb-fallback">{initials(label)}</div>
+      <div className="thumb-fallback-art">
+        <div className="thumb-fallback">{initials(label)}</div>
+        <div className="thumb-fallback-label">{label}</div>
+      </div>
       <span className="thumb-tag">{tag}</span>
     </div>
   );
@@ -457,9 +511,11 @@ function getChannelLink(item) {
   return getWatchTargets(item, "channel")[0]?.href || item.url || item.website || item.channelWebsite || null;
 }
 
-function getPlayableStream(item) {
+function getPlayableStream(item, fallbackItem = null) {
   const candidate = item?.selectedStreamUrl || item?.streamUrl || item?.streamUrls?.[0];
-  return typeof candidate === "string" ? candidate : candidate?.url || null;
+  const fallbackCandidate = fallbackItem?.selectedStreamUrl || fallbackItem?.streamUrl || fallbackItem?.streamUrls?.[0];
+  const resolved = candidate || fallbackCandidate;
+  return typeof resolved === "string" ? resolved : resolved?.url || null;
 }
 
 function getAppLink(item, title) {
@@ -474,8 +530,10 @@ export default function HomePage() {
   const [countryFilter, setCountryFilter] = useState("");
   const [genreFilter, setGenreFilter] = useState("");
   const [appFilter, setAppFilter] = useState("");
+  const [includeAdult, setIncludeAdult] = useState(false);
+  const [catalogPage, setCatalogPage] = useState(1);
   const [mainTab, setMainTab] = useState("home");
-  const [browseTab, setBrowseTab] = useState("today");
+  const [browseTab, setBrowseTab] = useState("tvChannels");
   const [timelineDayOffset, setTimelineDayOffset] = useState(0);
   const [isTimelinePending, startTimelineTransition] = useTransition();
   const [selectedItem, setSelectedItem] = useState(null);
@@ -493,17 +551,27 @@ export default function HomePage() {
     streamingApps: [],
     sourceStatus: [],
     providerWarnings: [],
+    catalogCountries: [],
+    catalogGenres: [],
+    catalogTotal: 0,
+    catalogHasMore: false,
     supportedRegions: ["uk"]
   });
 
-  async function loadGuide(currentRegion, currentQuery) {
+  async function loadGuide(currentRegion, currentQuery, currentCountry = countryFilter, currentGenre = "", currentPage = 1, appendChannels = false, catalogOnly = false) {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setLoading(true);
     setError("");
     const params = new URLSearchParams({
       region: currentRegion,
-      q: currentQuery
+      q: currentQuery,
+      country: currentCountry,
+      genre: currentGenre,
+      catalogOnly: String(catalogOnly),
+      includeAdult: String(includeAdult),
+      page: String(currentPage),
+      pageSize: "100"
     });
 
     console.log('[loadGuide] Starting fetch for region:', currentRegion, 'query:', currentQuery);
@@ -525,16 +593,20 @@ export default function HomePage() {
         streamingApps: payload.streamingApps?.length
       });
       if (requestId !== requestIdRef.current) return;
-      setGuide({
+      setGuide((previous) => ({
         today: payload.today || [],
         liveNow: payload.liveNow || [],
         upcoming: payload.upcoming || [],
-        tvChannels: payload.tvChannels || [],
+        tvChannels: appendChannels ? [...previous.tvChannels, ...(payload.tvChannels || [])] : payload.tvChannels || [],
         streamingApps: payload.streamingApps || [],
         sourceStatus: payload.sourceStatus || [],
         providerWarnings: payload.providerWarnings || [],
+        catalogCountries: payload.catalogCountries || [],
+        catalogGenres: payload.catalogGenres || [],
+        catalogTotal: payload.catalogTotal || 0,
+        catalogHasMore: Boolean(payload.catalogHasMore),
         supportedRegions: payload.supportedRegions || ["uk"]
-      });
+      }));
       console.log('[loadGuide] State updated successfully');
     } catch (err) {
       console.error('[loadGuide] Error:', err);
@@ -564,8 +636,37 @@ export default function HomePage() {
   }, [queryInput]);
 
   useEffect(() => {
-    loadGuide(region, query);
-  }, [region, query]);
+    setCatalogPage(1);
+    loadGuide(region, query, countryFilter, genreFilter, 1, false, mainTab === "browse" && browseTab === "tvChannels");
+    // loadGuide is intentionally scoped to this page so it can update request state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [region, query, countryFilter, genreFilter, mainTab, browseTab, includeAdult]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("my-tv-guide.includeAdult");
+    if (stored === "true") setIncludeAdult(true);
+  }, []);
+
+  useEffect(() => {
+    const onShortcut = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "x") {
+        event.preventDefault();
+        setIncludeAdult((current) => {
+          const next = !current;
+          window.localStorage.setItem("my-tv-guide.includeAdult", String(next));
+          return next;
+        });
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
+
+  function loadMoreChannels() {
+    const nextPage = catalogPage + 1;
+    setCatalogPage(nextPage);
+    loadGuide(region, query, countryFilter, genreFilter, nextPage, true, true);
+  }
 
   const appLookup = useMemo(() => {
     return new Map(guide.streamingApps.map((item) => [String(item.id), item]));
@@ -617,23 +718,26 @@ export default function HomePage() {
 
   const countryOptions = useMemo(() => {
     const unique = new Set(
-      guide.tvChannels
-        .map((item) => String(item.country || "").trim().toUpperCase())
-        .filter(Boolean)
+      guide.catalogCountries.length > 0
+        ? guide.catalogCountries.map((country) => String(country).trim().toUpperCase())
+        : guide.tvChannels.map((item) => String(item.country || "").trim().toUpperCase())
     );
-    return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [guide.tvChannels]);
+    for (const country of Array.from(unique)) {
+      if (!country) unique.delete(country);
+    }
+    return Array.from(unique).sort((a, b) => regionDisplayName(a).localeCompare(regionDisplayName(b)));
+  }, [guide.catalogCountries, guide.tvChannels]);
 
   const genreOptions = useMemo(() => {
-    const unique = new Set();
-    for (const item of guide.tvChannels) {
-      for (const value of [item.genre, item.category, ...toArray(item.genres)]) {
-        const genre = String(value || "").trim();
-        if (genre) unique.add(genre);
-      }
+    const unique = new Map();
+    const sourceGenres = guide.catalogGenres.length > 0 ? guide.catalogGenres : guide.tvChannels.flatMap((item) => [item.genre, item.category, ...toArray(item.genres)]);
+    for (const value of sourceGenres) {
+      const genre = String(value || "").trim();
+      const key = canonicalGenre(genre);
+      if (key && (includeAdult || key !== "xxx") && !unique.has(key)) unique.set(key, GENRE_LABELS[key] || genreDisplayLabel(key));
     }
-    return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [guide.tvChannels]);
+    return Array.from(unique.values()).sort((a, b) => a.localeCompare(b));
+  }, [guide.catalogGenres, guide.tvChannels, includeAdult]);
 
   const appOptions = useMemo(() => {
     return [...guide.streamingApps]
@@ -690,6 +794,7 @@ export default function HomePage() {
 
   const filteredTvChannels = useMemo(() => {
     return guide.tvChannels.filter((item) => {
+      if (!includeAdult && item.isAdult) return false;
       if (channelFilter && String(item.name || "") !== channelFilter) return false;
       if (countryFilter && String(item.country || "").toUpperCase() !== countryFilter) return false;
       if (genreFilter && !itemHasGenre(item, genreFilter)) return false;
@@ -698,7 +803,7 @@ export default function HomePage() {
       const hints = toArray(item.watchVia).map((entry) => String(entry).toLowerCase());
       return selectedAppNeedles.some((needle) => hints.some((hint) => hint.includes(needle) || needle.includes(hint)));
     });
-  }, [guide.tvChannels, channelFilter, countryFilter, genreFilter, selectedAppNeedles]);
+  }, [guide.tvChannels, channelFilter, countryFilter, genreFilter, selectedAppNeedles, includeAdult]);
 
   const filteredStreamingApps = useMemo(() => {
     return guide.streamingApps.filter((item) => {
@@ -811,8 +916,10 @@ export default function HomePage() {
 
   function openDetails(item, type = "programme") {
     if (!item) return;
+    const matchedChannel = channelMetadata.get(normalizeFilterText(item.channel || item.name));
+    const hasPlayableStream = getPlayableStream(item, matchedChannel);
     const destination =
-      type === "channel" ? getChannelLink(item) : type === "app" ? getAppLink(item) : getProgrammeLink(item);
+      hasPlayableStream ? null : type === "channel" ? getChannelLink(item) : type === "app" ? getAppLink(item) : getProgrammeLink(item);
     setSelectedItem({
       item,
       type,
@@ -821,7 +928,8 @@ export default function HomePage() {
   }
 
   function playStream(item) {
-    const streamUrl = getPlayableStream(item);
+    const matchedChannel = channelMetadata.get(normalizeFilterText(item?.channel || item?.name));
+    const streamUrl = getPlayableStream(item, matchedChannel);
     if (!streamUrl) return;
 
     setPlayingStream({
@@ -935,9 +1043,25 @@ export default function HomePage() {
             </div>
           </div>
 
+          <div className="sidebar-section">
+            <h3 className="sidebar-section-title">Settings</h3>
+            <label className="sidebar-toggle-setting">
+              <input
+                type="checkbox"
+                checked={includeAdult}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setIncludeAdult(next);
+                  window.localStorage.setItem("my-tv-guide.includeAdult", String(next));
+                }}
+              />
+              <span>Show 18+ channels</span>
+            </label>
+          </div>
+
           {/* Region Selector */}
           <div className="sidebar-section">
-            <h3 className="sidebar-section-title">Region</h3>
+            <h3 className="sidebar-section-title">Schedule region</h3>
             <select
               className="sidebar-select"
               value={region}
@@ -1002,7 +1126,7 @@ export default function HomePage() {
                 className="hero-radar-feature feature-button"
                 onClick={() => openDetails(featuredNow[0], "programme")}
               >
-                <MediaThumb image={featuredNow[0].image} label={featuredNow[0].show || featuredNow[0].channel} tag={getProgrammeStatus(featuredNow[0])} />
+                <MediaThumb image={featuredNow[0].image || featuredNow[0].channelLogo} label={featuredNow[0].show || featuredNow[0].channel} tag={getProgrammeStatus(featuredNow[0])} />
                 <div className="hero-radar-body">
                   <h3>{highlightText(featuredNow[0].show, query)}</h3>
                   <p>{highlightText(featuredNow[0].title, query)}</p>
@@ -1073,7 +1197,7 @@ export default function HomePage() {
                 className={index === 0 ? "feature-card feature-card-main feature-button" : "feature-card feature-button"}
                 onClick={() => openDetails(item, "programme")}
               >
-                <MediaThumb image={item.image} label={item.show || item.channel} tag={index === 0 ? "EDITOR'S PICK" : "TRENDING"} />
+                <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={index === 0 ? "EDITOR'S PICK" : "TRENDING"} />
                 <div className="feature-body">
                   <h3>{highlightText(item.show, query)}</h3>
                   <p>{highlightText(item.title, query)}</p>
@@ -1214,19 +1338,11 @@ export default function HomePage() {
       {mainTab === "browse" ? (
       <>
       <section className="panel">
-        <h2>Search and Region</h2>
+        <h2>Search and Channel Catalogue</h2>
+        <p className="state scope-note">
+          Browse worldwide IPTV channels by region, genre, or channel. Choose All regions to see the complete catalogue.
+        </p>
         <div className="controls-grid">
-          <label className="control-item">
-            <span>Region</span>
-            <select value={region} onChange={(e) => setRegion(e.target.value)}>
-              {guide.supportedRegions.map((value) => (
-                <option key={value} value={value}>
-                  {value.toUpperCase()}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <label className="control-item">
             <span>Search across channels, shows, and apps</span>
             <input
@@ -1255,12 +1371,18 @@ export default function HomePage() {
           </label>
 
           <label className="control-item filter-item">
-            <span>Country</span>
-            <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-              <option value="">All countries</option>
+            <span>Region</span>
+            <select
+              value={countryFilter}
+              onChange={(e) => {
+                setCountryFilter(e.target.value);
+                setBrowseTab("tvChannels");
+              }}
+            >
+              <option value="">All regions</option>
               {countryOptions.map((country) => (
                 <option key={country} value={country}>
-                  {country}
+                  {regionDisplayName(country)}
                 </option>
               ))}
             </select>
@@ -1351,7 +1473,7 @@ export default function HomePage() {
                   return (
                     <li key={`p-${item.id}`} className="listing-card">
                       <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                        <MediaThumb image={item.image} label={item.show || item.channel} tag={badge} />
+                        <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={badge} />
                         <div className="card-body">
                           <h3>{highlightText(item.show, query)}</h3>
                           <p className="meta">{item.channel}</p>
@@ -1372,7 +1494,7 @@ export default function HomePage() {
                   return (
                     <li key={`c-${item.id}`} className="listing-card">
                       <button type="button" className="card-link card-button" onClick={() => openDetails(item, "channel")}>
-                        <MediaThumb image={item.logo} label={item.name} tag="CHANNEL" />
+                        <MediaThumb image={item.logo} label={item.name} tag="CHANNEL" fit="contain" />
                         <div className="card-body">
                           <h3>{item.name}</h3>
                           <p className="meta">{toArray(item.watchVia).join(", ") || item.access}</p>
@@ -1389,7 +1511,7 @@ export default function HomePage() {
                 return (
                   <li key={`a-${item.id}`} className="listing-card">
                     <button type="button" className="card-link card-button" onClick={() => openDetails(item, "app")}>
-                      <MediaThumb image={item.logo} label={item.name} tag="APP" />
+                      <MediaThumb image={item.logo} label={item.name} tag="APP" fit="contain" />
                       <div className="card-body">
                         <h3>{item.name}</h3>
                         <p className="meta availability-tag">
@@ -1408,7 +1530,7 @@ export default function HomePage() {
       <section className="panel">
         <div className="section-title-row">
           <h2>Guide Studio</h2>
-          <button type="button" className="ghost" onClick={() => loadGuide(region, query)}>
+          <button type="button" className="ghost" onClick={() => loadGuide(region, query, countryFilter, genreFilter, 1, false)}>
             Refresh
           </button>
         </div>
@@ -1460,7 +1582,7 @@ export default function HomePage() {
             {filteredToday.map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                  <MediaThumb image={item.image} label={item.show || item.channel} tag="TODAY" />
+                  <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="TODAY" />
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
@@ -1492,7 +1614,7 @@ export default function HomePage() {
             {filteredLiveNow.map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                  <MediaThumb image={item.image} label={item.show || item.channel} tag="LIVE" />
+                  <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="LIVE" />
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
@@ -1524,7 +1646,7 @@ export default function HomePage() {
             {filteredUpcoming.map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                  <MediaThumb image={item.image} label={item.show || item.channel} tag="UP NEXT" />
+                  <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="UP NEXT" />
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
@@ -1552,7 +1674,7 @@ export default function HomePage() {
             {filteredTvChannels.map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "channel")}>
-                  <MediaThumb image={item.logo} label={item.name} tag={item.genre || "CHANNEL"} />
+                  <MediaThumb image={item.logo} label={item.name} tag={item.genre || "CHANNEL"} fit="contain" />
                   <div className="card-body">
                     <h3>{item.name}</h3>
                     <p>{item.access}</p>
@@ -1573,6 +1695,15 @@ export default function HomePage() {
           </ul>
         ) : null}
 
+        {!loading && !error && browseTab === "tvChannels" && guide.catalogHasMore ? (
+          <div className="section-actions catalog-pagination">
+            <p className="state">Showing {filteredTvChannels.length} of {guide.catalogTotal} matching channels.</p>
+            <button type="button" className="ghost" onClick={loadMoreChannels} disabled={loading}>
+              {loading ? "Loading channels..." : "Load more channels"}
+            </button>
+          </div>
+        ) : null}
+
         {!loading && !error && browseTab === "streamingApps" && filteredStreamingApps.length === 0 ? (
           <p className="state">No streaming apps match this search.</p>
         ) : null}
@@ -1582,7 +1713,7 @@ export default function HomePage() {
             {filteredStreamingApps.map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "app")}>
-                  <MediaThumb image={item.logo} label={item.name} tag={item.category || "APP"} />
+                  <MediaThumb image={item.logo} label={item.name} tag={item.category || "APP"} fit="contain" />
                   <div className="card-body">
                     <h3>{item.name}</h3>
                     <p>{item.priceModel}</p>
@@ -1612,9 +1743,10 @@ export default function HomePage() {
             </button>
             <div className="detail-media">
               <MediaThumb
-                image={selectedItem.item.image || selectedItem.item.logo}
+                image={selectedItem.item.image || selectedItem.item.channelLogo || selectedItem.item.logo}
                 label={selectedItem.item.show || selectedItem.item.name || selectedItem.item.title}
                 tag={(selectedItem.type || "item").toUpperCase()}
+                fit={selectedItem.type === "channel" || selectedItem.type === "app" ? "contain" : "cover"}
               />
             </div>
             <div className="detail-body">
@@ -1634,16 +1766,26 @@ export default function HomePage() {
                   <span className="attribution"> (streaming data via JustWatch)</span>
                 </p>
               ) : null}
-              <p className="watch-title">Where to watch</p>
-              <div className="watch-links" aria-label="Watch options">
-                {getWatchTargets(selectedItem.item, selectedItem.type).map((entry) => (
-                  <a key={entry.href} href={entry.href} target="_blank" rel="noreferrer" className="watch-link">
-                    {entry.label}
-                  </a>
-                ))}
-              </div>
+              {!getPlayableStream(
+                selectedItem.item,
+                channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
+              ) ? (
+                <>
+                  <p className="watch-title">Where to watch</p>
+                  <div className="watch-links" aria-label="Watch options">
+                    {getWatchTargets(selectedItem.item, selectedItem.type).map((entry) => (
+                      <a key={entry.href} href={entry.href} target="_blank" rel="noreferrer" className="watch-link">
+                        {entry.label}
+                      </a>
+                    ))}
+                  </div>
+                </>
+              ) : null}
               <div className="detail-actions">
-                {getPlayableStream(selectedItem.item) ? (
+                {getPlayableStream(
+                  selectedItem.item,
+                  channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
+                ) ? (
                   <button
                     type="button"
                     className="cta cta-primary"
@@ -1657,11 +1799,17 @@ export default function HomePage() {
                     href={selectedItem.destination}
                     target="_blank"
                     rel="noreferrer"
-                    className={getPlayableStream(selectedItem.item) ? "cta cta-secondary" : "cta cta-primary"}
+                    className={getPlayableStream(
+                      selectedItem.item,
+                      channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
+                    ) ? "cta cta-secondary" : "cta cta-primary"}
                   >
                     Watch / Open
                   </a>
-                ) : !getPlayableStream(selectedItem.item) ? (
+                ) : !getPlayableStream(
+                  selectedItem.item,
+                  channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
+                ) ? (
                   <span className="state">No direct stream link available yet for this listing.</span>
                 ) : null}
                 <button type="button" className="cta cta-secondary" onClick={closeDetails}>

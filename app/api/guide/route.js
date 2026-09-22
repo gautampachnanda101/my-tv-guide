@@ -13,8 +13,14 @@ export async function GET(request) {
 
   const region = (searchParams.get("region") || "uk").toLowerCase();
   const query = toSafeQuery(searchParams);
+  const country = (searchParams.get("country") || "").trim().toUpperCase();
+  const genre = (searchParams.get("genre") || "").trim();
+  const catalogOnly = searchParams.get("catalogOnly") === "true";
+  const includeAdult = searchParams.get("includeAdult") === "true";
+  const page = Math.max(1, Number(searchParams.get("page") || 1));
+  const pageSize = Math.min(150, Math.max(25, Number(searchParams.get("pageSize") || 100)));
 
-  const data = await getGuideData({ region, query });
+  const data = await getGuideData({ region, query, country, genre, page, pageSize, catalogOnly, includeAdult });
 
   return Response.json({
     ok: true,
