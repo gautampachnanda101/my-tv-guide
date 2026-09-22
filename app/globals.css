@@ -349,6 +349,11 @@ h3,
   background: rgba(255, 255, 255, 0.14);
 }
 
+.card-preview {
+  width: calc(100% - 2rem);
+  margin: 0 1rem 1rem;
+}
+
 .panel {
   border: 1px solid var(--line);
   background: var(--panel);

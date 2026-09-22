@@ -58,6 +58,15 @@ function itemMatchesGenreTerm(item, term) {
   return haystack.includes(term);
 }
 
+function itemHasGenre(item, genre) {
+  const wanted = normalizeFilterText(genre);
+  if (!wanted) return true;
+
+  return [item?.genre, item?.category, ...toArray(item?.genres)].some(
+    (value) => normalizeFilterText(value) === wanted
+  );
+}
+
 function slugify(value) {
   return String(value || "")
     .toLowerCase()
@@ -448,6 +457,11 @@ function getChannelLink(item) {
   return getWatchTargets(item, "channel")[0]?.href || item.url || item.website || item.channelWebsite || null;
 }
 
+function getPlayableStream(item) {
+  const candidate = item?.selectedStreamUrl || item?.streamUrl || item?.streamUrls?.[0];
+  return typeof candidate === "string" ? candidate : candidate?.url || null;
+}
+
 function getAppLink(item, title) {
   return buildProviderUrl(item.id, title) || item.website || null;
 }
@@ -457,6 +471,8 @@ export default function HomePage() {
   const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [channelFilter, setChannelFilter] = useState("");
+  const [countryFilter, setCountryFilter] = useState("");
+  const [genreFilter, setGenreFilter] = useState("");
   const [appFilter, setAppFilter] = useState("");
   const [mainTab, setMainTab] = useState("home");
   const [browseTab, setBrowseTab] = useState("today");
@@ -582,12 +598,40 @@ export default function HomePage() {
     return lookup;
   }, [guide.tvChannels]);
 
+  const channelMetadata = useMemo(() => {
+    const lookup = new Map();
+    for (const channel of guide.tvChannels) {
+      lookup.set(normalizeFilterText(channel.name), channel);
+    }
+    return lookup;
+  }, [guide.tvChannels]);
+
   const channelOptions = useMemo(() => {
     // Dedupe by name: at global IPTV-org scale, many channels in different
     // countries share a name (e.g. several "Agro TV"s), and schedule items
     // only ever carry a channel name string (no per-country id) to filter
     // against, so duplicate-named options would be indistinguishable noise.
     const unique = new Set(guide.tvChannels.map((item) => String(item.name || "")).filter(Boolean));
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [guide.tvChannels]);
+
+  const countryOptions = useMemo(() => {
+    const unique = new Set(
+      guide.tvChannels
+        .map((item) => String(item.country || "").trim().toUpperCase())
+        .filter(Boolean)
+    );
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [guide.tvChannels]);
+
+  const genreOptions = useMemo(() => {
+    const unique = new Set();
+    for (const item of guide.tvChannels) {
+      for (const value of [item.genre, item.category, ...toArray(item.genres)]) {
+        const genre = String(value || "").trim();
+        if (genre) unique.add(genre);
+      }
+    }
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [guide.tvChannels]);
 
@@ -615,6 +659,12 @@ export default function HomePage() {
   const programmeMatchesFilters = useMemo(() => {
     return (item) => {
       if (channelFilter && String(item.channel || "") !== channelFilter) return false;
+      const channel = channelMetadata.get(normalizeFilterText(item.channel));
+      if (countryFilter) {
+        const itemCountry = String(item.country || channel?.country || "").toUpperCase();
+        if (itemCountry !== countryFilter) return false;
+      }
+      if (genreFilter && !itemHasGenre(item, genreFilter) && !itemHasGenre(channel, genreFilter)) return false;
       if (!selectedAppNeedles.length) return true;
 
       const watchHints = [
@@ -632,7 +682,7 @@ export default function HomePage() {
         watchHints.some((hint) => hint.includes(needle) || needle.includes(hint))
       );
     };
-  }, [channelFilter, selectedAppNeedles, channelToWatchVia]);
+  }, [channelFilter, countryFilter, genreFilter, selectedAppNeedles, channelMetadata, channelToWatchVia]);
 
   const filteredToday = useMemo(() => guide.today.filter(programmeMatchesFilters), [guide.today, programmeMatchesFilters]);
   const filteredLiveNow = useMemo(() => guide.liveNow.filter(programmeMatchesFilters), [guide.liveNow, programmeMatchesFilters]);
@@ -641,12 +691,14 @@ export default function HomePage() {
   const filteredTvChannels = useMemo(() => {
     return guide.tvChannels.filter((item) => {
       if (channelFilter && String(item.name || "") !== channelFilter) return false;
+      if (countryFilter && String(item.country || "").toUpperCase() !== countryFilter) return false;
+      if (genreFilter && !itemHasGenre(item, genreFilter)) return false;
       if (!selectedAppNeedles.length) return true;
 
       const hints = toArray(item.watchVia).map((entry) => String(entry).toLowerCase());
       return selectedAppNeedles.some((needle) => hints.some((hint) => hint.includes(needle) || needle.includes(hint)));
     });
-  }, [guide.tvChannels, channelFilter, selectedAppNeedles]);
+  }, [guide.tvChannels, channelFilter, countryFilter, genreFilter, selectedAppNeedles]);
 
   const filteredStreamingApps = useMemo(() => {
     return guide.streamingApps.filter((item) => {
@@ -678,7 +730,7 @@ export default function HomePage() {
   // visible - they must stay unfiltered, or setting a filter in Browse and
   // switching to Home makes the app look like it suddenly has no data.
   const globalHeadlineCount = guide.today.length + guide.liveNow.length + guide.upcoming.length;
-  const hasActiveFilter = Boolean(query.trim() || channelFilter || appFilter);
+  const hasActiveFilter = Boolean(query.trim() || channelFilter || countryFilter || genreFilter || appFilter);
   const activeAppOrChannelLabel = channelFilter || selectedApp?.name || "";
   const displayCount = (value, label) => (loading ? label : value);
   const activeTabCount = counts[browseTab] || 0;
@@ -768,6 +820,17 @@ export default function HomePage() {
     });
   }
 
+  function playStream(item) {
+    const streamUrl = getPlayableStream(item);
+    if (!streamUrl) return;
+
+    setPlayingStream({
+      streamUrl,
+      channelName: item.channel || item.name || "Live stream",
+      title: item.show || item.title || null
+    });
+  }
+
   function closeDetails() {
     setSelectedItem(null);
   }
@@ -781,6 +844,8 @@ export default function HomePage() {
 
   function clearFilters() {
     setChannelFilter("");
+    setCountryFilter("");
+    setGenreFilter("");
     setAppFilter("");
     setQuery("");
     setQueryInput("");
@@ -1190,6 +1255,30 @@ export default function HomePage() {
           </label>
 
           <label className="control-item filter-item">
+            <span>Country</span>
+            <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
+              <option value="">All countries</option>
+              {countryOptions.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="control-item filter-item">
+            <span>Genre</span>
+            <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)}>
+              <option value="">All genres</option>
+              {genreOptions.map((genre) => (
+                <option key={genre} value={genre}>
+                  {genre}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="control-item filter-item">
             <span>Streaming app</span>
             <select value={appFilter} onChange={(e) => setAppFilter(e.target.value)}>
               <option value="">All streaming apps</option>
@@ -1205,7 +1294,7 @@ export default function HomePage() {
             type="button"
             className="ghost"
             onClick={clearFilters}
-            disabled={!channelFilter && !appFilter && !query.trim()}
+            disabled={!channelFilter && !countryFilter && !genreFilter && !appFilter && !query.trim()}
           >
             Clear filters
           </button>
@@ -1271,6 +1360,11 @@ export default function HomePage() {
                           </p>
                         </div>
                       </button>
+                      {getPlayableStream(item) ? (
+                        <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                          Play in app
+                        </button>
+                      ) : null}
                     </li>
                   );
                 }
@@ -1284,6 +1378,11 @@ export default function HomePage() {
                           <p className="meta">{toArray(item.watchVia).join(", ") || item.access}</p>
                         </div>
                       </button>
+                      {getPlayableStream(item) ? (
+                        <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                          Play in app
+                        </button>
+                      ) : null}
                     </li>
                   );
                 }
@@ -1371,6 +1470,11 @@ export default function HomePage() {
                     <p className="meta card-cta">View details</p>
                   </div>
                 </button>
+                {getPlayableStream(item) ? (
+                  <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                    Play in app
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -1398,6 +1502,11 @@ export default function HomePage() {
                     <p className="meta card-cta">View details</p>
                   </div>
                 </button>
+                {getPlayableStream(item) ? (
+                  <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                    Play in app
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -1425,6 +1534,11 @@ export default function HomePage() {
                     <p className="meta card-cta">View details</p>
                   </div>
                 </button>
+                {getPlayableStream(item) ? (
+                  <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                    Play in app
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -1449,6 +1563,11 @@ export default function HomePage() {
                     <p className="meta card-cta">View details</p>
                   </div>
                 </button>
+                {getPlayableStream(item) ? (
+                  <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                    Play in app
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -1524,18 +1643,11 @@ export default function HomePage() {
                 ))}
               </div>
               <div className="detail-actions">
-                {selectedItem.item.streamUrl ? (
+                {getPlayableStream(selectedItem.item) ? (
                   <button
                     type="button"
                     className="cta cta-primary"
-                    onClick={() => {
-                      setPlayingStream({
-                        streamUrl: selectedItem.item.streamUrl,
-                        channelName: selectedItem.item.channel || selectedItem.item.name || "Live stream",
-                        title: selectedItem.item.show || selectedItem.item.title || null
-                      });
-                      closeDetails();
-                    }}
+                    onClick={() => playStream(selectedItem.item)}
                   >
                     ▶ Play here
                   </button>
@@ -1545,11 +1657,11 @@ export default function HomePage() {
                     href={selectedItem.destination}
                     target="_blank"
                     rel="noreferrer"
-                    className={selectedItem.item.streamUrl ? "cta cta-secondary" : "cta cta-primary"}
+                    className={getPlayableStream(selectedItem.item) ? "cta cta-secondary" : "cta cta-primary"}
                   >
                     Watch / Open
                   </a>
-                ) : !selectedItem.item.streamUrl ? (
+                ) : !getPlayableStream(selectedItem.item) ? (
                   <span className="state">No direct stream link available yet for this listing.</span>
                 ) : null}
                 <button type="button" className="cta cta-secondary" onClick={closeDetails}>
