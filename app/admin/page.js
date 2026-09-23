@@ -43,7 +43,7 @@ export default async function AdminPage() {
       <section className="panel" style={{ marginTop: "1.5rem" }}>
         <h2>Configured sources</h2>
         <p className="state">These sources are global and stored in Turso for every user.</p>
-        <form action="/api/admin/sources" method="post" className="controls-grid" style={{ marginTop: "1rem" }}>
+        <form action="/api/admin/sources" method="post" className="controls-grid admin-source-form" style={{ marginTop: "1rem" }}>
           <label className="control-item">
             <span>Name</span>
             <input name="name" required placeholder="UK sports playlist" />

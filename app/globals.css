@@ -656,6 +656,26 @@ h2 {
   align-items: start;
 }
 
+.admin-source-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-source-form .control-item,
+.admin-source-form .cta {
+  min-width: 0;
+}
+
+.admin-source-form .control-item input,
+.admin-source-form .control-item select {
+  box-sizing: border-box;
+}
+
+.admin-source-form .control-item:nth-of-type(3),
+.admin-source-form .cta {
+  grid-column: 1 / -1;
+}
+
 .control-item {
   display: grid;
   gap: 0.5rem;
