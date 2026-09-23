@@ -22,9 +22,11 @@ function configuredSources() {
   ];
 }
 
-export default async function AdminPage() {
+export default async function AdminPage({ searchParams }) {
   const session = await auth();
   if (!session?.user?.isAdmin) redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent("/admin")}`);
+  const params = await searchParams;
+  const errorMessage = params?.error ? String(params.error) : "";
   const sourceStore = await import("@/lib/sources/store");
   const globalSources = await sourceStore.listGlobalSources();
 
@@ -43,6 +45,7 @@ export default async function AdminPage() {
       <section className="panel" style={{ marginTop: "1.5rem" }}>
         <h2>Configured sources</h2>
         <p className="state">These sources are global and stored in Turso for every user.</p>
+        {errorMessage ? <p className="state error" role="alert">{errorMessage}</p> : null}
         <form action="/api/admin/sources" method="post" className="controls-grid admin-source-form" style={{ marginTop: "1rem" }}>
           <label className="control-item">
             <span>Name</span>

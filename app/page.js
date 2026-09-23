@@ -546,6 +546,7 @@ export default function HomePage() {
   const [genreFilter, setGenreFilter] = useState("");
   const [appFilter, setAppFilter] = useState("");
   const [includeAdult, setIncludeAdult] = useState(false);
+  const [personalSources, setPersonalSources] = useState([]);
   const [catalogPage, setCatalogPage] = useState(1);
   const [mainTab, setMainTab] = useState("home");
   const [browseTab, setBrowseTab] = useState("tvChannels");
@@ -590,10 +591,58 @@ export default function HomePage() {
       page: String(currentPage),
       pageSize: "100"
     });
+    const cacheKey = `my-tv-guide:${params.toString()}`;
+    let hasCachedPayload = false;
+
+    const applyGuidePayload = (payload) => {
+      if (requestId !== requestIdRef.current) return;
+      const personalChannels = personalSources.filter((source) => source.type === "stream").map((source) => ({
+        id: `personal-${source.id}`,
+        name: source.name,
+        logo: "",
+        country: "PERSONAL",
+        genre: "Personal",
+        category: "Personal",
+        access: "Private to this browser",
+        watchVia: ["Personal source"],
+        streamUrl: source.url,
+        sourceType: source.type || "stream"
+      }));
+      setGuide((previous) => ({
+        today: payload.today || [],
+        liveNow: payload.liveNow || [],
+        upcoming: payload.upcoming || [],
+        tvChannels: appendChannels
+          ? [...previous.tvChannels, ...(payload.tvChannels || [])]
+          : [...personalChannels, ...(payload.tvChannels || [])],
+        streamingApps: payload.streamingApps || [],
+        sourceStatus: payload.sourceStatus || [],
+        providerWarnings: payload.providerWarnings || [],
+        catalogCountries: payload.catalogCountries || [],
+        catalogGenres: payload.catalogGenres || [],
+        catalogTotal: payload.catalogTotal || 0,
+        catalogHasMore: Boolean(payload.catalogHasMore),
+        supportedRegions: payload.supportedRegions || ["uk"]
+      }));
+    };
 
     console.log('[loadGuide] Starting fetch for region:', currentRegion, 'query:', currentQuery);
 
     try {
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const { timestamp, payload } = JSON.parse(cached);
+          if (Date.now() - timestamp < 300000) {
+            hasCachedPayload = true;
+            applyGuidePayload(payload);
+            setLoading(false);
+          }
+        }
+      } catch {
+        // Browser storage can be unavailable; the network request remains authoritative.
+      }
+
       const response = await fetch(`/api/guide?${params.toString()}`, {
         next: { revalidate: 300 } // Cache for 5 minutes
       });
@@ -610,25 +659,18 @@ export default function HomePage() {
         streamingApps: payload.streamingApps?.length
       });
       if (requestId !== requestIdRef.current) return;
-      setGuide((previous) => ({
-        today: payload.today || [],
-        liveNow: payload.liveNow || [],
-        upcoming: payload.upcoming || [],
-        tvChannels: appendChannels ? [...previous.tvChannels, ...(payload.tvChannels || [])] : payload.tvChannels || [],
-        streamingApps: payload.streamingApps || [],
-        sourceStatus: payload.sourceStatus || [],
-        providerWarnings: payload.providerWarnings || [],
-        catalogCountries: payload.catalogCountries || [],
-        catalogGenres: payload.catalogGenres || [],
-        catalogTotal: payload.catalogTotal || 0,
-        catalogHasMore: Boolean(payload.catalogHasMore),
-        supportedRegions: payload.supportedRegions || ["uk"]
-      }));
+      applyGuidePayload(payload);
+      try {
+        sessionStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), payload }));
+      } catch {
+        // Ignore storage quota and privacy-mode failures.
+      }
       console.log('[loadGuide] State updated successfully');
     } catch (err) {
       console.error('[loadGuide] Error:', err);
       if (requestId !== requestIdRef.current) return;
       setError("Could not load guide data right now. Please retry.");
+      if (hasCachedPayload) return;
       setGuide((prev) => ({
         ...prev,
         today: [],
@@ -657,7 +699,16 @@ export default function HomePage() {
     loadGuide(region, query, countryFilter, genreFilter, 1, false, mainTab === "browse" && browseTab === "tvChannels");
     // loadGuide is intentionally scoped to this page so it can update request state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [region, query, countryFilter, genreFilter, mainTab, browseTab, includeAdult]);
+  }, [region, query, countryFilter, genreFilter, mainTab, browseTab, includeAdult, personalSources]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem("my-tv-guide.public-sources") || "[]");
+      setPersonalSources(Array.isArray(stored) ? stored.filter((source) => source?.id && source?.name && source?.url) : []);
+    } catch {
+      setPersonalSources([]);
+    }
+  }, []);
 
   useEffect(() => {
     const stored = window.localStorage.getItem("my-tv-guide.includeAdult");
@@ -1106,6 +1157,7 @@ export default function HomePage() {
               />
               <span>Show 18+ channels</span>
             </label>
+            <a className="sidebar-nav-item" href="/sources">My personal sources</a>
           </div>
 
           {/* Region Selector */}

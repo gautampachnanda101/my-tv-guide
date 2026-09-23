@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { addGlobalSource, deleteGlobalSource, isSourceStoreAvailable, listGlobalSources } from "@/lib/sources/store";
+import { addGlobalSource, deleteGlobalSource, isSourceStoreAvailable, listGlobalSources, normalizeSourceUrl } from "@/lib/sources/store";
 
 function isAdmin(request) {
   return Boolean(request.auth?.user?.isAdmin);
@@ -30,7 +30,18 @@ export const POST = auth(async (request) => {
     return Response.json({ error: "Enter a name, source type, and valid HTTP(S) URL." }, { status: 400 });
   }
 
-  const source = await addGlobalSource({ name, type, url });
+  let source;
+  try {
+    source = await addGlobalSource({ name, type, url: normalizeSourceUrl(url) });
+  } catch (error) {
+    if (error?.code === "DUPLICATE_SOURCE_URL" || error?.code === "SQLITE_CONSTRAINT_UNIQUE") {
+      if (!contentType.includes("application/json")) {
+        return Response.redirect(new URL(`/admin?error=${encodeURIComponent("A source with this URL already exists.")}`, request.url));
+      }
+      return Response.json({ error: "A source with this URL already exists." }, { status: 409 });
+    }
+    throw error;
+  }
   if (!contentType.includes("application/json")) {
     return Response.redirect(new URL("/admin", request.url));
   }
