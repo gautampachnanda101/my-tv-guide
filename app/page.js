@@ -1547,6 +1547,9 @@ export default function HomePage() {
                   }
                 }}
               >
+                <span className="quick-chip-icon" aria-hidden="true">
+                  {item.label === "Sport" ? "⚽" : item.label === "Football" ? "◉" : item.label === "News" ? "✦" : item.label === "Drama" ? "◈" : item.label === "Movies" ? "▣" : item.label === "Streaming" ? "▶" : "✦"}
+                </span>
                 {item.label}
               </button>
             );
@@ -1629,12 +1632,13 @@ export default function HomePage() {
       <section className="panel">
         <div className="section-title-row">
           <h2>Guide Studio</h2>
-          <button type="button" className="ghost" onClick={() => loadGuide(region, query, countryFilter, genreFilter, 1, false)}>
+          <button type="button" className="ghost studio-refresh" onClick={() => loadGuide(region, query, countryFilter, genreFilter, 1, false)}>
+            <span className="studio-icon" aria-hidden="true">↻</span>
             Refresh
           </button>
         </div>
 
-        <div className="tabs-row">
+        <div className="tabs-row studio-tabs">
           {browseTabs.map((item) => (
             <button
               key={item.key}
@@ -1642,6 +1646,9 @@ export default function HomePage() {
               className={browseTab === item.key ? "tab-pill active" : "tab-pill"}
               onClick={() => setBrowseTab(item.key)}
             >
+              <span className="studio-icon" aria-hidden="true">
+                {item.key === "today" ? "◷" : item.key === "liveNow" ? "●" : item.key === "upcoming" ? "↗" : item.key === "tvChannels" ? "▦" : "▶"}
+              </span>
               {item.label} ({loading ? "…" : counts[item.key]})
             </button>
           ))}
@@ -1938,6 +1945,13 @@ export default function HomePage() {
 
       {playingStream ? (
         <div className="detail-overlay" role="dialog" aria-modal="true" aria-label="Video player">
+          <button
+            type="button"
+            className="player-back-button"
+            onClick={() => setPlayingStream(null)}
+          >
+            <span aria-hidden="true">←</span> Back to guide
+          </button>
           <VideoPlayer
             streamUrl={playingStream.streamUrl}
             channelName={playingStream.channelName}
