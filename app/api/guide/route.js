@@ -25,7 +25,7 @@ export async function GET(request) {
   return Response.json({
     ok: true,
     generatedAt: new Date().toISOString(),
-    supportedRegions: getSupportedRegions(),
+    supportedRegions: data.supportedRegions || getSupportedRegions(),
     query,
     ...data
   }, {

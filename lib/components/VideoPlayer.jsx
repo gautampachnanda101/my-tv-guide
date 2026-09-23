@@ -292,7 +292,7 @@ export default function VideoPlayer({
         </div>
         {isChannelPlaylist && playlistEntries.length > 0 ? (
           <label className={styles.playlistSelect}>
-            <span className={styles.srOnly}>Choose channel</span>
+            <span className={styles.playlistLabel}>Choose a channel</span>
             <select value={selectedPlaylistUrl} onChange={(event) => setSelectedPlaylistUrl(event.target.value)}>
               {playlistEntries.map((entry) => (
                 <option key={entry.id} value={entry.url}>{entry.title}</option>
@@ -301,13 +301,14 @@ export default function VideoPlayer({
           </label>
         ) : null}
         {onClose && (
-          <button 
-            onClick={onClose} 
-            className={styles.closeBtn}
-            aria-label="Close player"
-          >
-            ✕
-          </button>
+          <div className={styles.playerActions}>
+            <button onClick={onClose} className={styles.backBtn} type="button">
+              Back to guide
+            </button>
+            <button onClick={onClose} className={styles.closeBtn} type="button" aria-label="Close player">
+              ✕
+            </button>
+          </div>
         )}
       </div>
 
