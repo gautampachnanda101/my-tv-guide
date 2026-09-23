@@ -12,10 +12,10 @@ const mainTabs = [
 
 const browseTabs = [
   { key: "today", label: "Today" },
-  { key: "liveNow", label: "Live Now" },
-  { key: "upcoming", label: "Upcoming" },
-  { key: "tvChannels", label: "TV Channels" },
-  { key: "streamingApps", label: "Streaming Apps" }
+  { key: "liveNow", label: "Live now" },
+  { key: "upcoming", label: "Up next" },
+  { key: "tvChannels", label: "Channels" },
+  { key: "streamingApps", label: "Watch services" }
 ];
 
 // Candidate quick filters with their user-friendly display labels. Which of
@@ -512,10 +512,25 @@ function getChannelLink(item) {
 }
 
 function getPlayableStream(item, fallbackItem = null) {
-  const candidate = item?.selectedStreamUrl || item?.streamUrl || item?.streamUrls?.[0];
-  const fallbackCandidate = fallbackItem?.selectedStreamUrl || fallbackItem?.streamUrl || fallbackItem?.streamUrls?.[0];
-  const resolved = candidate || fallbackCandidate;
-  return typeof resolved === "string" ? resolved : resolved?.url || null;
+  return getPlayableStreams(item, fallbackItem)[0] || null;
+}
+
+function getPlayableStreams(item, fallbackItem = null) {
+  const candidates = [
+    item?.selectedStreamUrl,
+    item?.streamUrl,
+    ...(item?.streamUrls || []),
+    fallbackItem?.selectedStreamUrl,
+    fallbackItem?.streamUrl,
+    ...(fallbackItem?.streamUrls || [])
+  ];
+  return Array.from(new Set(candidates.map((candidate) => {
+    return typeof candidate === "string" ? candidate : candidate?.url || null;
+  }).filter(Boolean)));
+}
+
+function isPlaylistUrl(url) {
+  return /\.m3u(?:$|\?)/i.test(String(url || "")) && !/\.m3u8(?:$|\?)/i.test(String(url || ""));
 }
 
 function getAppLink(item, title) {
@@ -538,6 +553,8 @@ export default function HomePage() {
   const [isTimelinePending, startTimelineTransition] = useTransition();
   const [selectedItem, setSelectedItem] = useState(null);
   const [playingStream, setPlayingStream] = useState(null);
+  const [checkingStream, setCheckingStream] = useState(false);
+  const [streamCheckError, setStreamCheckError] = useState("");
   const [isFeaturedCompact, setIsFeaturedCompact] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -939,6 +956,38 @@ export default function HomePage() {
     });
   }
 
+  async function openCheckedStream(item) {
+    const matchedChannel = channelMetadata.get(normalizeFilterText(item?.channel || item?.name));
+    const candidates = getPlayableStreams(item, matchedChannel);
+    if (candidates.length === 0) return;
+
+    const popup = window.open("about:blank", "_blank");
+    if (!popup) {
+      setStreamCheckError("Please allow pop-ups to open the stream in a new tab.");
+      return;
+    }
+
+    setCheckingStream(true);
+    setStreamCheckError("");
+    try {
+      for (const candidate of candidates) {
+        const response = await fetch(`/api/stream-check?url=${encodeURIComponent(candidate)}`);
+        const result = await response.json();
+        if (result.ok || result.status === 401 || result.status === 403) {
+          popup.location.href = candidate;
+          return;
+        }
+      }
+      popup.document.body.innerHTML = "<main style=\"font:16px system-ui;padding:32px\"><h1>Stream unavailable</h1><p>That source returned a missing response. No working alternative was found.</p><button onclick=\"window.close()\">Close</button></main>";
+      setStreamCheckError("That stream is unavailable right now. No working alternative was found.");
+    } catch {
+      popup.location.href = candidates[0];
+      setStreamCheckError("The source could not be checked, so it was opened directly.");
+    } finally {
+      setCheckingStream(false);
+    }
+  }
+
   function closeDetails() {
     setSelectedItem(null);
   }
@@ -1028,7 +1077,7 @@ export default function HomePage() {
 
           {/* Quick Filters */}
           <div className="sidebar-section">
-            <h3 className="sidebar-section-title">Quick Filters</h3>
+            <h3 className="sidebar-section-title">Quick picks</h3>
             <div className="sidebar-filters">
               {quickFilters.map((filter, idx) => (
                 <button
@@ -1044,7 +1093,7 @@ export default function HomePage() {
           </div>
 
           <div className="sidebar-section">
-            <h3 className="sidebar-section-title">Settings</h3>
+            <h3 className="sidebar-section-title">Preferences</h3>
             <label className="sidebar-toggle-setting">
               <input
                 type="checkbox"
@@ -1061,7 +1110,7 @@ export default function HomePage() {
 
           {/* Region Selector */}
           <div className="sidebar-section">
-            <h3 className="sidebar-section-title">Schedule region</h3>
+            <h3 className="sidebar-section-title">Guide region</h3>
             <select
               className="sidebar-select"
               value={region}
@@ -1092,16 +1141,15 @@ export default function HomePage() {
       <main className="page-shell">
       <section className="hero-card premium">
         <div className="hero-content">
-          <p className="eyebrow">Tonight In UK</p>
+          <p className="eyebrow">What&apos;s on tonight</p>
           <h1>My TV Guide</h1>
           <p className="subhead">
-            Live now, up next, and where to watch. Built like a modern streaming home, powered
-            by open TV data and designed for fast decisions.
+            Live now, what&apos;s next, and the easiest way to watch.
           </p>
           <div className="hero-meta">
-            <span>{displayCount(`${globalHeadlineCount} programmes indexed now`, "Loading programmes...")}</span>
-            <span>{displayCount(`${guide.tvChannels.length} channels aggregated`, "Loading channels...")}</span>
-            <span>{displayCount(`${guide.streamingApps.length} streaming services`, "Loading apps...")}</span>
+            <span>{displayCount(`${globalHeadlineCount} programmes on now`, "Loading programmes...")}</span>
+            <span>{displayCount(`${guide.tvChannels.length} channels to explore`, "Loading channels...")}</span>
+            <span>{displayCount(`${guide.streamingApps.length} ways to watch`, "Loading apps...")}</span>
           </div>
           <div className="hero-actions">
             <button type="button" className="cta cta-primary" onClick={() => { setMainTab("browse"); setBrowseTab("liveNow"); }}>Go Live</button>
@@ -1110,10 +1158,10 @@ export default function HomePage() {
         </div>
         <div className="hero-radar">
           <div className="hero-radar-card">
-            <p className="hero-radar-label">Signal Board</p>
-            <h2>{hasActiveFilter ? `Live now for "${query || activeAppOrChannelLabel}"` : "What is live right now"}</h2>
+            <p className="hero-radar-label">On right now</p>
+            <h2>{hasActiveFilter ? `Now showing: "${query || activeAppOrChannelLabel}"` : "What's on right now"}</h2>
             <p className="hero-radar-copy">
-              A fast read on the strongest things on air, with direct watch paths when they exist.
+              A quick look at what&apos;s playing, with a simple way to start watching.
             </p>
             {loading ? (
               <div className="hero-radar-loading">
@@ -1142,15 +1190,15 @@ export default function HomePage() {
           </div>
           <div className="hero-radar-signal">
             <div>
-              <span className="hero-radar-kicker">Direct watch paths</span>
-              <strong>{displayCount(`${guide.streamingApps.length} apps`, "Loading...")}</strong>
+              <span className="hero-radar-kicker">Ways to watch</span>
+              <strong>{displayCount(`${guide.streamingApps.length} services`, "Loading...")}</strong>
             </div>
             <div>
-              <span className="hero-radar-kicker">Live channel supply</span>
-              <strong>{displayCount(`${guide.tvChannels.length} channels`, "Loading...")}</strong>
+              <span className="hero-radar-kicker">Channels</span>
+              <strong>{displayCount(`${guide.tvChannels.length} to browse`, "Loading...")}</strong>
             </div>
             <div>
-              <span className="hero-radar-kicker">Tonight total</span>
+              <span className="hero-radar-kicker">Tonight</span>
               <strong>{displayCount(`${globalHeadlineCount} programmes`, "Loading...")}</strong>
             </div>
           </div>
@@ -1177,7 +1225,7 @@ export default function HomePage() {
           <div className="section-title-row">
             <h2>Featured Right Now</h2>
             <div className="section-actions">
-              <p className="state">Curated from live and upcoming schedules</p>
+              <p className="state">A few things worth watching</p>
               {featuredNow.length > 3 ? (
                 <button
                   type="button"
@@ -1338,13 +1386,13 @@ export default function HomePage() {
       {mainTab === "browse" ? (
       <>
       <section className="panel">
-        <h2>Search and Channel Catalogue</h2>
+        <h2>Find something to watch</h2>
         <p className="state scope-note">
-          Browse worldwide IPTV channels by region, genre, or channel. Choose All regions to see the complete catalogue.
+          Explore channels from around the world by region, genre, or name.
         </p>
         <div className="controls-grid">
           <label className="control-item">
-            <span>Search across channels, shows, and apps</span>
+            <span>Search programmes, channels, and services</span>
             <input
               type="search"
               placeholder="Try: football, BBC, drama, sports"
@@ -1352,7 +1400,7 @@ export default function HomePage() {
               onChange={(e) => setQueryInput(e.target.value)}
             />
             <span className="search-feedback" aria-live="polite">
-              {loading && queryInput.trim() ? `Searching for "${queryInput.trim()}"...` : "Search updates as you type."}
+              {loading && queryInput.trim() ? `Looking for "${queryInput.trim()}"...` : "Results update as you type."}
             </span>
           </label>
         </div>
@@ -1401,7 +1449,7 @@ export default function HomePage() {
           </label>
 
           <label className="control-item filter-item">
-            <span>Streaming app</span>
+            <span>Watch service</span>
             <select value={appFilter} onChange={(e) => setAppFilter(e.target.value)}>
               <option value="">All streaming apps</option>
               {appOptions.map((item) => (
@@ -1418,7 +1466,7 @@ export default function HomePage() {
             onClick={clearFilters}
             disabled={!channelFilter && !countryFilter && !genreFilter && !appFilter && !query.trim()}
           >
-            Clear filters
+            Reset filters
           </button>
         </div>
 
@@ -1460,8 +1508,7 @@ export default function HomePage() {
             <h2>Right now for &quot;{query || activeAppOrChannelLabel}&quot;</h2>
           </div>
           <p className="state">
-            Live and starting-soon programmes, channels, and apps that match - merged in one place instead of
-            checking each tab separately.
+            Live and starting-soon programmes, channels, and services that match your search.
           </p>
 
           {unifiedNowResults.length === 0 ? (
@@ -1484,7 +1531,7 @@ export default function HomePage() {
                       </button>
                       {getPlayableStream(item) ? (
                         <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                          Play in app
+                          Play now
                         </button>
                       ) : null}
                     </li>
@@ -1502,7 +1549,7 @@ export default function HomePage() {
                       </button>
                       {getPlayableStream(item) ? (
                         <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                          Play in app
+                          Play now
                         </button>
                       ) : null}
                     </li>
@@ -1515,7 +1562,7 @@ export default function HomePage() {
                       <div className="card-body">
                         <h3>{item.name}</h3>
                         <p className="meta availability-tag">
-                          {Array.isArray(item.channels) && item.channels.length > 0 ? "Has live channels" : "On-demand only"}
+                          {Array.isArray(item.channels) && item.channels.length > 0 ? "Live channels" : "Available anytime"}
                         </p>
                       </div>
                     </button>
@@ -1555,12 +1602,12 @@ export default function HomePage() {
         ) : null}
 
         {!loading && !error && query && activeTabCount === 0 ? (
-          <p className="state empty-hint">
-            No {activeTabLabel.toLowerCase()} match &quot;{query}&quot;. Try a broader term like &quot;sport&quot;, &quot;news&quot;, or &quot;movie&quot;.
+            <p className="state empty-hint">
+            Nothing in {activeTabLabel.toLowerCase()} matches &quot;{query}&quot;. Try &quot;sport&quot;, &quot;news&quot;, or &quot;movie&quot;.
           </p>
         ) : null}
 
-        {loading ? <p className="state">Loading listings...</p> : null}
+        {loading ? <p className="state">Finding what&apos;s on...</p> : null}
         {error ? <p className="state error">{error}</p> : null}
         {!loading && !error && guide.providerWarnings.length > 0 ? (
           <div className="warning-box">
@@ -1574,7 +1621,7 @@ export default function HomePage() {
           <p className="state">
             {selectedAppHasLiveChannels === false
               ? `${selectedApp.name} is on-demand - its shows are available anytime, so they won't show up in a daily schedule. Check the Streaming Apps tab instead.`
-              : "No programmes found for today with this search."}
+              : "Nothing matched today. Try a broader search."}
           </p>
         ) : null}
         {!loading && !error && browseTab === "today" && filteredToday.length > 0 ? (
@@ -1589,12 +1636,12 @@ export default function HomePage() {
                     <p className="meta">{item.channel}</p>
                     <p className="meta">{formatTime(item.startAt)} • {formatTime(item.endAt)}</p>
                     <p className="summary">{trimSummary(item.summary)}</p>
-                    <p className="meta card-cta">View details</p>
+                    <p className="meta card-cta">See more</p>
                   </div>
                 </button>
                 {getPlayableStream(item) ? (
                   <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                    Play in app
+                    Play now
                   </button>
                 ) : null}
               </li>
@@ -1606,7 +1653,7 @@ export default function HomePage() {
           <p className="state">
             {selectedAppHasLiveChannels === false
               ? `${selectedApp.name} is on-demand - it has no "live" concept, its whole catalog is available anytime. Check the Streaming Apps tab instead.`
-              : "No programmes are marked as live right now."}
+              : "Nothing is live right now."}
           </p>
         ) : null}
         {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length > 0 ? (
@@ -1621,12 +1668,12 @@ export default function HomePage() {
                     <p className="meta">{item.channel}</p>
                     <p className="meta">Started: {formatDateTime(item.startAt)}</p>
                     <p className="summary">{trimSummary(item.summary)}</p>
-                    <p className="meta card-cta">View details</p>
+                    <p className="meta card-cta">See more</p>
                   </div>
                 </button>
                 {getPlayableStream(item) ? (
                   <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                    Play in app
+                    Play now
                   </button>
                 ) : null}
               </li>
@@ -1653,12 +1700,12 @@ export default function HomePage() {
                     <p className="meta">{item.channel}</p>
                     <p className="meta">Starts: {formatDateTime(item.startAt)}</p>
                     <p className="summary">{trimSummary(item.summary)}</p>
-                    <p className="meta card-cta">View details</p>
+                    <p className="meta card-cta">See more</p>
                   </div>
                 </button>
                 {getPlayableStream(item) ? (
                   <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                    Play in app
+                    Play now
                   </button>
                 ) : null}
               </li>
@@ -1667,7 +1714,7 @@ export default function HomePage() {
         ) : null}
 
         {!loading && !error && browseTab === "tvChannels" && filteredTvChannels.length === 0 ? (
-          <p className="state">No channels match this search.</p>
+          <p className="state">No channels matched. Try another search or region.</p>
         ) : null}
         {!loading && !error && browseTab === "tvChannels" && filteredTvChannels.length > 0 ? (
           <ul className="listing-grid visual channels">
@@ -1682,12 +1729,12 @@ export default function HomePage() {
                       <p className="meta">Language: {item.languages.join(", ")}</p>
                     ) : null}
                     <p className="meta">Watch via: {item.watchVia.join(", ")}</p>
-                    <p className="meta card-cta">View details</p>
+                    <p className="meta card-cta">See more</p>
                   </div>
                 </button>
                 {getPlayableStream(item) ? (
                   <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                    Play in app
+                    Play now
                   </button>
                 ) : null}
               </li>
@@ -1697,9 +1744,9 @@ export default function HomePage() {
 
         {!loading && !error && browseTab === "tvChannels" && guide.catalogHasMore ? (
           <div className="section-actions catalog-pagination">
-            <p className="state">Showing {filteredTvChannels.length} of {guide.catalogTotal} matching channels.</p>
+            <p className="state">Showing {filteredTvChannels.length} of {guide.catalogTotal} channels.</p>
             <button type="button" className="ghost" onClick={loadMoreChannels} disabled={loading}>
-              {loading ? "Loading channels..." : "Load more channels"}
+              {loading ? "Loading channels..." : "Show more channels"}
             </button>
           </div>
         ) : null}
@@ -1722,9 +1769,9 @@ export default function HomePage() {
                     <p className="meta availability-tag">
                       {Array.isArray(item.channels) && item.channels.length > 0
                         ? `Live channels: ${item.channels.length}`
-                        : "On-demand only - available anytime"}
+                        : "Available anytime"}
                     </p>
-                    <p className="meta card-cta">View details</p>
+                    <p className="meta card-cta">See more</p>
                   </div>
                 </button>
               </li>
@@ -1771,7 +1818,7 @@ export default function HomePage() {
                 channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
               ) ? (
                 <>
-                  <p className="watch-title">Where to watch</p>
+                  <p className="watch-title">Watch options</p>
                   <div className="watch-links" aria-label="Watch options">
                     {getWatchTargets(selectedItem.item, selectedItem.type).map((entry) => (
                       <a key={entry.href} href={entry.href} target="_blank" rel="noreferrer" className="watch-link">
@@ -1782,18 +1829,33 @@ export default function HomePage() {
                 </>
               ) : null}
               <div className="detail-actions">
-                {getPlayableStream(
-                  selectedItem.item,
-                  channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
-                ) ? (
-                  <button
-                    type="button"
-                    className="cta cta-primary"
-                    onClick={() => playStream(selectedItem.item)}
-                  >
-                    ▶ Play here
-                  </button>
-                ) : null}
+                {(() => {
+                  const streamUrl = getPlayableStream(
+                    selectedItem.item,
+                    channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
+                  );
+                  return streamUrl ? (
+                    <>
+                      <a
+                        href="#stream"
+                        className="cta cta-secondary"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          openCheckedStream(selectedItem.item);
+                        }}
+                      >
+                        {checkingStream ? "Checking stream..." : isPlaylistUrl(streamUrl) ? "Open playlist" : "Open stream"}
+                      </a>
+                      <button
+                        type="button"
+                        className="cta cta-primary"
+                        onClick={() => playStream(selectedItem.item)}
+                      >
+                        ▶ Play now
+                      </button>
+                    </>
+                  ) : null;
+                })()}
                 {selectedItem.destination ? (
                   <a
                     href={selectedItem.destination}
@@ -1804,14 +1866,15 @@ export default function HomePage() {
                       channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
                     ) ? "cta cta-secondary" : "cta cta-primary"}
                   >
-                    Watch / Open
+                    Open link
                   </a>
                 ) : !getPlayableStream(
                   selectedItem.item,
                   channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
                 ) ? (
-                  <span className="state">No direct stream link available yet for this listing.</span>
+                  <span className="state">No playable stream is available for this listing yet.</span>
                 ) : null}
+                {streamCheckError ? <span className="state error">{streamCheckError}</span> : null}
                 <button type="button" className="cta cta-secondary" onClick={closeDetails}>
                   Back to guide
                 </button>

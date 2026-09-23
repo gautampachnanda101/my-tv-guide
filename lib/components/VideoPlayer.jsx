@@ -131,8 +131,7 @@ export default function VideoPlayer({
                     if (status === 401 || status === 403) {
                       setError('This stream refused the connection (blocked by its source) - try a different channel.');
                     } else {
-                      setError('Network error. Please check your connection.');
-                      hls.startLoad();
+                      setError('This source does not allow playback inside the guide. Use Open source to watch it in a new tab, or try another channel.');
                     }
                     break;
                   }
@@ -332,6 +331,12 @@ export default function VideoPlayer({
         {error && (
           <div className={styles.errorOverlay}>
             <p className={styles.errorMessage}>{error}</p>
+            <button
+              onClick={() => window.open(activeStreamUrl, '_blank', 'noopener,noreferrer')}
+              className={styles.retryBtn}
+            >
+              Open source
+            </button>
             <button onClick={() => window.location.reload()} className={styles.retryBtn}>
               Retry
             </button>
