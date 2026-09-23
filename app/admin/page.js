@@ -25,6 +25,8 @@ function configuredSources() {
 export default async function AdminPage() {
   const session = await auth();
   if (!session?.user?.isAdmin) redirect(`/api/auth/signin?callbackUrl=${encodeURIComponent("/admin")}`);
+  const sourceStore = await import("@/lib/sources/store");
+  const globalSources = await sourceStore.listGlobalSources();
 
   return (
     <main className="page-shell" style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -40,13 +42,43 @@ export default async function AdminPage() {
       </header>
       <section className="panel" style={{ marginTop: "1.5rem" }}>
         <h2>Configured sources</h2>
-        <p className="state">These sources are global and affect every user after deployment configuration changes.</p>
+        <p className="state">These sources are global and stored in Turso for every user.</p>
+        <form action="/api/admin/sources" method="post" className="controls-grid" style={{ marginTop: "1rem" }}>
+          <label className="control-item">
+            <span>Name</span>
+            <input name="name" required placeholder="UK sports playlist" />
+          </label>
+          <label className="control-item">
+            <span>Type</span>
+            <select name="type" defaultValue="playlist">
+              <option value="playlist">M3U playlist</option>
+              <option value="xmltv">XMLTV schedule</option>
+            </select>
+          </label>
+          <label className="control-item">
+            <span>URL</span>
+            <input name="url" type="url" required placeholder="https://example.com/source.m3u" />
+          </label>
+          <button className="cta cta-primary" type="submit">Add source</button>
+        </form>
         <div className="source-grid" style={{ marginTop: "1rem" }}>
-          {configuredSources().map((source) => (
+          {[...globalSources.map((source) => ({
+            ...source,
+            kind: source.type === "playlist" ? "M3U playlist" : "XMLTV schedule",
+            status: "Managed in Turso"
+          })), ...configuredSources()].map((source) => (
             <article className="panel" key={`${source.name}-${source.kind}`}>
               <h3>{source.name}</h3>
-              <p className="meta">{source.kind}</p>
+              <p className="meta">{source.kind || source.type}</p>
+              {source.url ? <p className="meta">{source.url}</p> : null}
               <p className="availability-tag">{source.status}</p>
+              {source.id ? (
+                <form action="/api/admin/sources" method="post">
+                  <input type="hidden" name="_method" value="delete" />
+                  <input type="hidden" name="id" value={source.id} />
+                  <button className="cta cta-secondary" type="submit">Remove</button>
+                </form>
+              ) : null}
             </article>
           ))}
         </div>
