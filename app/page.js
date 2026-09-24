@@ -736,6 +736,28 @@ export default function HomePage() {
     loadGuide(region, query, countryFilter, genreFilter, nextPage, true, true);
   }
 
+  const channelSentinelRef = useRef(null);
+
+  // IntersectionObserver-driven infinite scroll: cheaper than a scroll
+  // listener and avoids an extra tap on mobile versus a "show more" button.
+  useEffect(() => {
+    if (browseTab !== "tvChannels" || !guide.catalogHasMore || loading) return;
+    const node = channelSentinelRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreChannels();
+      },
+      { rootMargin: "600px" }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+    // loadMoreChannels intentionally excluded: it closes over catalogPage via
+    // component scope and is safe to call with each render's latest value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [browseTab, guide.catalogHasMore, loading]);
+
   const appLookup = useMemo(() => {
     return new Map(guide.streamingApps.map((item) => [String(item.id), item]));
   }, [guide.streamingApps]);
@@ -1801,12 +1823,12 @@ export default function HomePage() {
           </ul>
         ) : null}
 
-        {!loading && !error && browseTab === "tvChannels" && guide.catalogHasMore ? (
+        {!error && browseTab === "tvChannels" && guide.catalogHasMore ? (
           <div className="section-actions catalog-pagination">
-            <p className="state">Showing {filteredTvChannels.length} of {guide.catalogTotal} channels.</p>
-            <button type="button" className="ghost" onClick={loadMoreChannels} disabled={loading}>
-              {loading ? "Loading channels..." : "Show more channels"}
-            </button>
+            <p className="state">
+              {loading ? "Loading more channels..." : `Showing ${filteredTvChannels.length} of ${guide.catalogTotal} channels.`}
+            </p>
+            <div ref={channelSentinelRef} className="channel-load-sentinel" aria-hidden="true" />
           </div>
         ) : null}
 
