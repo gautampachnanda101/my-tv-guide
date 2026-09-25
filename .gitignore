@@ -27,3 +27,8 @@ pnpm-debug.log*
 
 # local encrypted credential store (see lib/security)
 /.data
+
+# playwright artifacts
+/.playwright-mcp
+/playwright-report
+/test-results
