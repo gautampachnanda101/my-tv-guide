@@ -226,7 +226,8 @@ const WATCH_PROVIDERS = {
   },
   sounds: {
     homepage: "https://www.bbc.co.uk/sounds",
-    buildLiveUrl: bbcSoundsLiveUrl
+    buildLiveUrl: bbcSoundsLiveUrl,
+    audio: true // radio, not video - callers use this to say "Listen on" instead of "Watch on"
   },
   itvx: { homepage: "https://www.itv.com/watch" }, // no reliable pattern found (ITVX's search page didn't respond to verification attempts)
   channel4: {
@@ -571,11 +572,12 @@ function getWatchViaLink(value, title, channel) {
     const broadcasterId = BBC_IPLAYER_LIVE_SLUGS[broadcastNetworkKey(channel)] ? "iplayer" : null;
     if (broadcasterId) {
       const broadcasterUrl = buildProviderUrl(broadcasterId, title, channel);
-      if (broadcasterUrl) return broadcasterUrl;
+      if (broadcasterUrl) return { href: broadcasterUrl, audio: false };
     }
   }
 
-  return buildProviderUrl(providerId, title, channel);
+  const href = buildProviderUrl(providerId, title, channel);
+  return href ? { href, audio: Boolean(WATCH_PROVIDERS[providerId]?.audio) } : null;
 }
 
 function pushUniqueTarget(targets, seen, label, href) {
@@ -603,8 +605,8 @@ function getWatchTargets(item, type = "programme") {
   if (item.channelWebsite) pushUniqueTarget(targets, seen, "Open channel site", item.channelWebsite);
 
   for (const hint of toArray(item.watchVia)) {
-    const href = getWatchViaLink(hint, title, item.channel);
-    if (href) pushUniqueTarget(targets, seen, `Watch on ${hint}`, href);
+    const resolved = getWatchViaLink(hint, title, item.channel);
+    if (resolved) pushUniqueTarget(targets, seen, `${resolved.audio ? "Listen on" : "Watch on"} ${hint}`, resolved.href);
   }
 
   return targets;
