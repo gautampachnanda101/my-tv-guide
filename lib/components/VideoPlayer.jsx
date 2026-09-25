@@ -25,9 +25,11 @@ export default function VideoPlayer({
 }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
+  const hideControlsTimeoutRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(muted);
   const [volume, setVolume] = useState(1);
+  const [controlsVisible, setControlsVisible] = useState(true);
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -96,7 +98,12 @@ export default function VideoPlayer({
         // Prefer native HLS where the browser supports it, especially Safari.
         // HLS.js is the fallback for browsers that need Media Source Extensions.
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          // Safari doesn't reliably pick up a new source on an already-loaded
+          // <video> just by reassigning `.src` - without an explicit load(),
+          // it keeps playing whatever was already buffered, so every "Play
+          // now" click after the first looked like it played the same stream.
           video.src = activeStreamUrl;
+          video.load();
           setIsLoading(false);
           if (autoPlay) {
             video.play().catch(() => setError('Playback is ready. Press play to start.'));
@@ -172,6 +179,7 @@ export default function VideoPlayer({
       } else {
         // Direct video source
         video.src = activeStreamUrl;
+        video.load();
         setIsLoading(false);
         if (autoPlay) {
           video.play().catch(e => {
@@ -254,6 +262,26 @@ export default function VideoPlayer({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // Controls only had a CSS `:hover` reveal, so once playback started they
+  // were invisible (and undiscoverable on touch, which has no hover) unless
+  // the mouse happened to still be over the player. Show them on any
+  // interaction and auto-hide after a few seconds of inactivity, but only
+  // while actually playing - a paused player always shows its controls.
+  const revealControls = () => {
+    setControlsVisible(true);
+    if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
+    if (!isPlaying) return;
+    hideControlsTimeoutRef.current = setTimeout(() => setControlsVisible(false), 3000);
+  };
+
+  useEffect(() => {
+    revealControls();
+    return () => {
+      if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only isPlaying should retrigger this
+  }, [isPlaying]);
+
   // Update playing state when video plays/pauses
   useEffect(() => {
     const video = videoRef.current;
@@ -317,7 +345,7 @@ export default function VideoPlayer({
         )}
       </div>
 
-      <div className={styles.videoWrapper}>
+      <div className={styles.videoWrapper} onMouseMove={revealControls} onTouchStart={revealControls}>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live stream has no captions track available */}
         <video
           ref={videoRef}
@@ -349,7 +377,7 @@ export default function VideoPlayer({
           </div>
         )}
 
-        <div className={styles.controls}>
+        <div className={`${styles.controls} ${controlsVisible ? styles.controlsVisible : ""}`}>
           <button 
             onClick={togglePlay}
             className={styles.playBtn}

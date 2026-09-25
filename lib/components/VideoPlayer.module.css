@@ -194,12 +194,15 @@
   padding: 12px 16px;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.3s;
   z-index: 5;
 }
 
-.videoWrapper:hover .controls {
+.controls.controlsVisible,
+.videoWrapper:focus-within .controls {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .controls button {
