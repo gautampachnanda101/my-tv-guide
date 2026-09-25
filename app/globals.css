@@ -689,6 +689,21 @@ h2 {
   letter-spacing: 0.01em;
 }
 
+.legal-warning {
+  border: 1px solid rgba(255, 122, 24, 0.4);
+  background: rgba(255, 122, 24, 0.08);
+}
+
+.control-item.legal-ack {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 0.6rem;
+}
+
+.control-item.legal-ack input {
+  margin-top: 0.2rem;
+}
+
 .search-feedback {
   margin-top: 0.45rem;
   font-size: 0.8125rem;

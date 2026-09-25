@@ -823,12 +823,14 @@ export default function HomePage() {
   }, [region, query, countryFilter, genreFilter, mainTab, browseTab, includeAdult, personalSources]);
 
   useEffect(() => {
-    try {
-      const stored = JSON.parse(window.localStorage.getItem("my-tv-guide.public-sources") || "[]");
-      setPersonalSources(Array.isArray(stored) ? stored.filter((source) => source?.id && source?.name && source?.url) : []);
-    } catch {
-      setPersonalSources([]);
-    }
+    // Personal streams are now a server-persisted, subscriber-gated feature
+    // (see /sources) - the API returns an empty list (via 401/403) for
+    // signed-out or non-subscribed visitors, which is the correct "no
+    // personal streams" state here, not an error to surface.
+    fetch("/api/my-streams")
+      .then((response) => (response.ok ? response.json() : { streams: [] }))
+      .then((payload) => setPersonalSources(Array.isArray(payload.streams) ? payload.streams : []))
+      .catch(() => setPersonalSources([]));
   }, []);
 
   useEffect(() => {
@@ -1357,7 +1359,7 @@ export default function HomePage() {
               />
               <span>Show 18+ channels</span>
             </label>
-            <a className="sidebar-nav-item" href="/sources">My personal sources</a>
+            <a className="sidebar-nav-item" href="/sources">My streams</a>
           </div>
 
           {/* Region Selector */}

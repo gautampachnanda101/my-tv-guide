@@ -29,6 +29,8 @@ export default async function AdminPage({ searchParams }) {
   const errorMessage = params?.error ? String(params.error) : "";
   const sourceStore = await import("@/lib/sources/store");
   const globalSources = await sourceStore.listGlobalSources();
+  const userStreamsStore = await import("@/lib/sources/userStreams");
+  const userAccounts = await userStreamsStore.listUserAccounts();
 
   return (
     <main className="page-shell" style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -82,6 +84,24 @@ export default async function AdminPage({ searchParams }) {
                   <button className="cta cta-secondary" type="submit">Remove</button>
                 </form>
               ) : null}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel" style={{ marginTop: "1.5rem" }}>
+        <h2>Subscribers</h2>
+        <p className="state">Personal streams (/sources) are gated behind this flag until real billing exists - toggle access per user here.</p>
+        <div className="source-grid" style={{ marginTop: "1rem" }}>
+          {userAccounts.map((account) => (
+            <article className="panel" key={account.githubLogin}>
+              <h3>{account.githubLogin}</h3>
+              <p className="availability-tag">{account.subscribed ? "Subscribed" : "Not subscribed"}</p>
+              <form action="/api/admin/users" method="post">
+                <input type="hidden" name="githubLogin" value={account.githubLogin} />
+                <input type="hidden" name="subscribed" value={String(!account.subscribed)} />
+                <button className="cta cta-secondary" type="submit">{account.subscribed ? "Revoke" : "Grant"}</button>
+              </form>
             </article>
           ))}
         </div>
