@@ -930,6 +930,35 @@ export default function HomePage() {
     return counts;
   }, [guide.streamingApps, guide.today, guide.liveNow, channelToWatchVia]);
 
+  // "Watch services" needs actual shows, not just an app directory: this is
+  // every live/today programme carried by a broadcaster app (Freely,
+  // iPlayer, ITVX, ...), independent of which channel filter is active.
+  const streamingServiceProgrammes = useMemo(() => {
+    const needles = [];
+    for (const app of guide.streamingApps) {
+      if (!Array.isArray(app.channels) || app.channels.length === 0) continue;
+      needles.push(String(app.id).toLowerCase(), String(app.name || "").toLowerCase());
+    }
+
+    const matchesAnyApp = (item) => {
+      const hints = [
+        ...toArray(item.watchVia),
+        ...(channelToWatchVia.get(String(item.channel || "").toLowerCase()) || [])
+      ].map((entry) => String(entry).toLowerCase());
+      return hints.length > 0 && needles.some((needle) => hints.some((hint) => hint.includes(needle) || needle.includes(hint)));
+    };
+
+    const source = appFilter
+      ? [...filteredLiveNow, ...filteredToday]
+      : [...guide.liveNow.filter(matchesAnyApp), ...guide.today.filter(matchesAnyApp)];
+
+    const byId = new Map();
+    for (const item of source) {
+      if (item?.id && !byId.has(item.id)) byId.set(item.id, item);
+    }
+    return Array.from(byId.values()).sort((a, b) => new Date(a.startAt || 0) - new Date(b.startAt || 0));
+  }, [appFilter, filteredLiveNow, filteredToday, guide.liveNow, guide.today, guide.streamingApps, channelToWatchVia]);
+
   const counts = useMemo(
     () => ({
       today: filteredToday.length,
@@ -1863,12 +1892,47 @@ export default function HomePage() {
           </div>
         ) : null}
 
+        {!loading && !error && browseTab === "streamingApps" ? (
+          <>
+            <h3 className="watch-title">
+              {appFilter ? `Streaming on ${selectedApp?.name || "this service"}` : "Streaming now across your apps"}
+            </h3>
+            {streamingServiceProgrammes.length === 0 ? (
+              <p className="state">No live programmes matched right now - browse the services below for on-demand catalogues.</p>
+            ) : (
+              <ul className="listing-grid visual">
+                {streamingServiceProgrammes.map((item) => (
+                  <li key={item.id} className="listing-card">
+                    <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
+                      <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={getProgrammeStatus(item)} />
+                      <div className="card-body">
+                        <h3>{highlightText(item.show, query)}</h3>
+                        <p>{highlightText(item.title, query)}</p>
+                        <p className="meta">{item.channel}</p>
+                        <p className="summary">{trimSummary(item.summary)}</p>
+                        <p className="meta card-cta">See more</p>
+                      </div>
+                    </button>
+                    {getPlayableStream(item) ? (
+                      <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                        Play now
+                      </button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        ) : null}
+
         {!loading && !error && browseTab === "streamingApps" && filteredStreamingApps.length === 0 ? (
           <p className="state">No streaming apps match this search.</p>
         ) : null}
 
         {!loading && !error && browseTab === "streamingApps" && filteredStreamingApps.length > 0 ? (
-          <ul className="listing-grid visual apps">
+          <>
+            <h3 className="watch-title">Streaming services directory</h3>
+            <ul className="listing-grid visual apps">
             {filteredStreamingApps.map((item) => {
               const hasChannels = Array.isArray(item.channels) && item.channels.length > 0;
               const liveCount = appLiveProgrammeCounts.get(item.id) || 0;
@@ -1891,10 +1955,7 @@ export default function HomePage() {
                     <button
                       type="button"
                       className="cta cta-primary card-preview"
-                      onClick={() => {
-                        setAppFilter(item.id);
-                        setBrowseTab(liveCount > 0 ? "liveNow" : "today");
-                      }}
+                      onClick={() => setAppFilter(item.id)}
                     >
                       See programmes
                     </button>
@@ -1902,7 +1963,8 @@ export default function HomePage() {
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </>
         ) : null}
       </section>
       </>
