@@ -3,6 +3,26 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./VideoPlayer.module.css";
 
+function normalizeForMatch(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+// Multiple catalog channels can fall back to the same shared M3U playlist
+// when no channel-specific stream URL is known (see getKnownPlaylistUrl in
+// lib/providers/uk/open-standards.js) - defaulting to the playlist's first
+// entry regardless of which channel was actually clicked made every one of
+// those channels look "stuck" playing the same stream. Try to find the
+// entry whose title actually matches the clicked channel's name first.
+function findBestPlaylistEntry(entries, channelName) {
+  const target = normalizeForMatch(channelName);
+  if (!target) return null;
+  return (
+    entries.find((entry) => normalizeForMatch(entry.title) === target) ||
+    entries.find((entry) => normalizeForMatch(entry.title).includes(target) || target.includes(normalizeForMatch(entry.title))) ||
+    null
+  );
+}
+
 /**
  * VideoPlayer Component
  * Client-side video player for live TV streams with HLS support
@@ -66,7 +86,8 @@ export default function VideoPlayer({
       .then((entries) => {
         if (cancelled) return;
         setPlaylistEntries(entries);
-        setSelectedPlaylistUrl(entries[0]?.url || "");
+        const matched = findBestPlaylistEntry(entries, channelName);
+        setSelectedPlaylistUrl(matched?.url || entries[0]?.url || "");
         if (entries.length === 0) setError("This M3U playlist contains no playable streams.");
       })
       .catch((error) => {
@@ -79,7 +100,7 @@ export default function VideoPlayer({
     return () => {
       cancelled = true;
     };
-  }, [isChannelPlaylist, streamUrl]);
+  }, [isChannelPlaylist, streamUrl, channelName]);
 
   // Load HLS.js dynamically (only on client)
   useEffect(() => {
