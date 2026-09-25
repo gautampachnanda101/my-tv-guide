@@ -168,6 +168,15 @@
   padding: 0 20px;
 }
 
+.errorDetail {
+  font-size: 0.78rem;
+  margin: -8px 0 16px;
+  max-width: 90%;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  word-break: break-all;
+}
+
 .retryBtn {
   background: #007bff;
   color: white;

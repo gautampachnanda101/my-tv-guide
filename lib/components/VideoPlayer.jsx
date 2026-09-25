@@ -160,6 +160,12 @@ export default function VideoPlayer({
               enableWorker: true,
               lowLatencyMode: true,
             });
+            // Assign before attachMedia/loadSource: attaching media can
+            // itself trigger a native <video> 'error' event, and that
+            // listener uses hlsRef.current to tell hls.js-managed errors
+            // apart from real ones - it needs to already see hls.js as
+            // owning playback by the time that fires.
+            hlsRef.current = hls;
 
             hls.loadSource(activeStreamUrl);
             hls.attachMedia(video);
@@ -206,8 +212,6 @@ export default function VideoPlayer({
                 }
               }
             });
-
-            hlsRef.current = hls;
           } else {
             setIsLoading(false);
             setError('This channel format is not supported in this browser. Try Open source or another channel.');
@@ -438,6 +442,14 @@ export default function VideoPlayer({
         {error && (
           <div className={styles.errorOverlay}>
             <p className={styles.errorMessage}>{error}</p>
+            {/* Crowd-sourced IPTV streams fail often and unpredictably - showing
+                which channel/URL actually failed (instead of just a generic
+                message) makes it possible to tell a one-off dead link apart
+                from a real player bug without needing devtools. */}
+            <p className={styles.errorDetail}>
+              {channelName}
+              {activeStreamUrl ? ` · ${activeStreamUrl}` : ""}
+            </p>
             <button
               onClick={() => window.open(activeStreamUrl, '_blank', 'noopener,noreferrer')}
               className={styles.retryBtn}
