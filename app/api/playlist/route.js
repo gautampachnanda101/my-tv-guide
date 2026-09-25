@@ -1,5 +1,8 @@
 const MAX_PLAYLIST_BYTES = 5 * 1024 * 1024;
 const MAX_ENTRIES = 500;
+// See app/api/stream-proxy/route.js for why this matters - this route also
+// fetches UK-broadcaster-hosted playlists directly.
+export const preferredRegion = "lhr1";
 
 function isPrivateHostname(hostname) {
   const host = hostname.toLowerCase().replace(/[\[\]]/g, "");

@@ -4,6 +4,11 @@
 // fetching them on the browser's behalf, so this endpoint does the fetch
 // itself and re-serves the result from our own https origin.
 export const maxDuration = 30;
+// Vercel's default function region is US (iad1) - a UK broadcaster's geo
+// check on our own outbound request would fail from there even when the
+// requesting browser's own IP is genuinely in the UK. Run from London so
+// this proxy's request looks UK-based like the content it's relaying.
+export const preferredRegion = "lhr1";
 
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;

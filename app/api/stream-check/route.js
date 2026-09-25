@@ -1,3 +1,7 @@
+// See app/api/stream-proxy/route.js for why this matters - this route also
+// probes UK-broadcaster-hosted stream URLs directly.
+export const preferredRegion = "lhr1";
+
 function isPrivateHostname(hostname) {
   const host = hostname.toLowerCase().replace(/[\[\]]/g, "");
   if (host === "localhost" || host === "localhost.localdomain" || host === "::1") return true;
