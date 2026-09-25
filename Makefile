@@ -1,18 +1,18 @@
-PORT ?= 3000
+PORT ?= 3002
 
 .PHONY: help install dev build start lint lint-css lint-all clean test kill-port check-port
 
 help:
 	@echo "Available targets:"
 	@echo "  make install             - Install npm dependencies"
-	@echo "  make dev [PORT=3000]     - Start the Next.js dev server (auto-picks a free port)"
+	@echo "  make dev [PORT=3002]     - Start the Next.js dev server (auto-picks a free port)"
 	@echo "  make build               - Build the production bundle"
-	@echo "  make start [PORT=3000]   - Start the production server (auto-picks a free port)"
+	@echo "  make start [PORT=3002]   - Start the production server (auto-picks a free port)"
 	@echo "  make lint                - Run ESLint"
 	@echo "  make lint-css            - Run Stylelint"
 	@echo "  make lint-all            - Run ESLint + Stylelint"
 	@echo "  make test                - Lint + build (local CI smoke test)"
-	@echo "  make kill-port [PORT=3000] - Kill whatever process is listening on PORT"
+	@echo "  make kill-port [PORT=3002] - Kill whatever process is listening on PORT"
 	@echo "  make clean               - Remove build artifacts"
 
 install:
