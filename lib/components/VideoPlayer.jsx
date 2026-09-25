@@ -37,6 +37,8 @@ function findBestPlaylistEntry(entries, channelName) {
  */
 export default function VideoPlayer({
   streamUrl,
+  streamReferrer,
+  streamUserAgent,
   channelName,
   title,
   autoPlay = false,
@@ -161,9 +163,18 @@ export default function VideoPlayer({
         typeof window !== "undefined" &&
         window.location.protocol === "https:" &&
         lowerUrl.startsWith("http://");
-      const usingProxy = needsHttpsProxy || forceProxy;
+      // iptv-org records the exact Referer/User-Agent some CDNs require -
+      // when we know it upfront, use the proxy right away instead of
+      // waiting for a direct attempt to fail first, since a browser can't
+      // set an arbitrary Referer on its own requests at all.
+      const hasHeaderHints = Boolean(streamReferrer || streamUserAgent);
+      const usingProxy = needsHttpsProxy || forceProxy || hasHeaderHints;
       usingProxyRef.current = usingProxy;
-      const loadUrl = usingProxy ? `/api/stream-proxy?url=${encodeURIComponent(activeStreamUrl)}` : activeStreamUrl;
+      const loadUrl = usingProxy
+        ? `/api/stream-proxy?url=${encodeURIComponent(activeStreamUrl)}${
+            streamReferrer ? `&referrer=${encodeURIComponent(streamReferrer)}` : ""
+          }${streamUserAgent ? `&userAgent=${encodeURIComponent(streamUserAgent)}` : ""}`
+        : activeStreamUrl;
 
       if (isHLS) {
         // Prefer native HLS where the browser supports it, especially Safari.
@@ -289,7 +300,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [activeStreamUrl, autoPlay, retryToken, forceProxy]);
+  }, [activeStreamUrl, autoPlay, retryToken, forceProxy, streamReferrer, streamUserAgent]);
 
   // Handle play/pause
   const togglePlay = () => {

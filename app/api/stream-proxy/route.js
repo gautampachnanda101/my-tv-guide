@@ -36,9 +36,9 @@ function parseTarget(raw) {
   return target;
 }
 
-function proxyUrlFor(request, absoluteUrl) {
+function proxyUrlFor(request, absoluteUrl, headerParams) {
   const origin = new URL(request.url).origin;
-  return `${origin}/api/stream-proxy?url=${encodeURIComponent(absoluteUrl)}`;
+  return `${origin}/api/stream-proxy?url=${encodeURIComponent(absoluteUrl)}${headerParams}`;
 }
 
 function isManifest(target, contentType) {
@@ -50,8 +50,10 @@ function isManifest(target, contentType) {
 // Rewrites every non-comment line (segment, sub-playlist, or key URI) in an
 // HLS manifest to route back through this same proxy, resolved against the
 // manifest's own URL - otherwise hls.js would fetch the original http://
-// segment URLs directly and hit the exact same mixed-content block.
-function rewriteManifest(text, request, manifestUrl) {
+// segment URLs directly and hit the exact same mixed-content block. Segments
+// from the same CDN typically need the same Referer/User-Agent as the
+// manifest itself, so that's carried along to every rewritten URL too.
+function rewriteManifest(text, request, manifestUrl, headerParams) {
   return text
     .split(/\r?\n/)
     .map((line) => {
@@ -62,7 +64,7 @@ function rewriteManifest(text, request, manifestUrl) {
         return trimmed.replace(/URI="([^"]+)"/, (match, uri) => {
           try {
             const absolute = new URL(uri, manifestUrl).toString();
-            return `URI="${proxyUrlFor(request, absolute)}"`;
+            return `URI="${proxyUrlFor(request, absolute, headerParams)}"`;
           } catch {
             return match;
           }
@@ -71,7 +73,7 @@ function rewriteManifest(text, request, manifestUrl) {
 
       try {
         const absolute = new URL(trimmed, manifestUrl).toString();
-        return proxyUrlFor(request, absolute);
+        return proxyUrlFor(request, absolute, headerParams);
       } catch {
         return line;
       }
@@ -80,9 +82,19 @@ function rewriteManifest(text, request, manifestUrl) {
 }
 
 export async function GET(request) {
-  const source = new URL(request.url).searchParams.get("url");
+  const { searchParams } = new URL(request.url);
+  const source = searchParams.get("url");
   const target = parseTarget(source);
   if (!target) return Response.json({ error: "Invalid or unsupported stream URL" }, { status: 400 });
+
+  // Strip control characters (CR/LF, etc.) before using these as literal
+  // outbound header values - they're attacker-reachable via the query string.
+  const sanitizeHeaderValue = (value) => (value ? value.replace(/[\r\n\0]/g, "").slice(0, 2048) : null);
+  const referrer = sanitizeHeaderValue(searchParams.get("referrer"));
+  const userAgent = sanitizeHeaderValue(searchParams.get("userAgent"));
+  const headerParams = `${referrer ? `&referrer=${encodeURIComponent(referrer)}` : ""}${
+    userAgent ? `&userAgent=${encodeURIComponent(userAgent)}` : ""
+  }`;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -90,7 +102,11 @@ export async function GET(request) {
   try {
     const upstream = await fetch(target, {
       signal: controller.signal,
-      headers: { Accept: "*/*" },
+      headers: {
+        Accept: "*/*",
+        ...(referrer ? { Referer: referrer } : {}),
+        ...(userAgent ? { "User-Agent": userAgent } : {})
+      },
       cache: "no-store",
       redirect: "follow"
     });
@@ -106,7 +122,7 @@ export async function GET(request) {
       if (new TextEncoder().encode(text).byteLength > MAX_MANIFEST_BYTES) {
         return Response.json({ error: "Manifest is too large" }, { status: 413 });
       }
-      return new Response(rewriteManifest(text, request, target.toString()), {
+      return new Response(rewriteManifest(text, request, target.toString(), headerParams), {
         headers: {
           "Content-Type": "application/vnd.apple.mpegurl",
           "Cache-Control": "no-store"

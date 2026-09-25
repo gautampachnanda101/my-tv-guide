@@ -664,6 +664,21 @@ function getPlayableStreams(item, fallbackItem = null) {
   }).filter(Boolean)));
 }
 
+// Some CDNs reject requests missing the exact Referer/User-Agent iptv-org
+// recorded alongside a stream - looks up that metadata for whichever URL
+// getPlayableStream actually resolved to, so the player can send it.
+function getPlayableStreamMeta(streamUrl, item, fallbackItem = null) {
+  const streamItems = [...(item?.streamItems || []), ...(fallbackItem?.streamItems || [])];
+  const matched = streamItems.find((candidate) => candidate?.url === streamUrl);
+  if (matched) {
+    return { referrer: matched.referrer || null, userAgent: matched.userAgent || null };
+  }
+  return {
+    referrer: item?.streamReferrer || fallbackItem?.streamReferrer || null,
+    userAgent: item?.streamUserAgent || fallbackItem?.streamUserAgent || null
+  };
+}
+
 function isPlaylistUrl(url) {
   return /\.m3u(?:$|\?)/i.test(String(url || "")) && !/\.m3u8(?:$|\?)/i.test(String(url || ""));
 }
@@ -1223,6 +1238,7 @@ export default function HomePage() {
     const matchedChannel = channelMetadata.get(normalizeFilterText(item?.channel || item?.name));
     const streamUrl = getPlayableStream(item, matchedChannel);
     if (!streamUrl) return;
+    const streamMeta = getPlayableStreamMeta(streamUrl, item, matchedChannel);
 
     setPlayingStream({
       // Two different channels can share the same underlying playlist URL
@@ -1232,6 +1248,8 @@ export default function HomePage() {
       // entry) just because the URL happens to match.
       id: crypto.randomUUID(),
       streamUrl,
+      streamReferrer: streamMeta.referrer,
+      streamUserAgent: streamMeta.userAgent,
       channelName: item.channel || item.name || "Live stream",
       title: item.show || item.title || null
     });
@@ -2261,6 +2279,8 @@ export default function HomePage() {
           <VideoPlayer
             key={playingStream.id}
             streamUrl={playingStream.streamUrl}
+            streamReferrer={playingStream.streamReferrer}
+            streamUserAgent={playingStream.streamUserAgent}
             channelName={playingStream.channelName}
             title={playingStream.title}
             autoPlay
