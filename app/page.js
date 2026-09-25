@@ -264,6 +264,15 @@ function formatTime(value) {
   }).format(new Date(value));
 }
 
+// Regional opt-out simulcasts (e.g. "BBC One London" also airing as "BBC One
+// Wales") are collapsed server-side into one card - surface that plainly
+// instead of hiding it, so it doesn't read as an arbitrary/unexplained pick.
+function formatChannelWithRegions(item) {
+  const regionCount = Array.isArray(item.regionalChannels) ? item.regionalChannels.length : 0;
+  if (regionCount <= 1) return item.channel;
+  return `${item.channel} +${regionCount - 1} more regions`;
+}
+
 function toLondonDayKey(value) {
   if (!value) return "";
   return new Intl.DateTimeFormat("en-CA", {
@@ -1774,7 +1783,7 @@ export default function HomePage() {
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
-                    <p className="meta">{item.channel}</p>
+                    <p className="meta" title={item.regionalChannels?.join(", ")}>{formatChannelWithRegions(item)}</p>
                     <p className="meta">{formatTime(item.startAt)} • {formatTime(item.endAt)}</p>
                     <p className="summary">{trimSummary(item.summary)}</p>
                     <p className="meta card-cta">See more</p>
@@ -1806,7 +1815,7 @@ export default function HomePage() {
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
-                    <p className="meta">{item.channel}</p>
+                    <p className="meta" title={item.regionalChannels?.join(", ")}>{formatChannelWithRegions(item)}</p>
                     <p className="meta">Started: {formatDateTime(item.startAt)}</p>
                     <p className="summary">{trimSummary(item.summary)}</p>
                     <p className="meta card-cta">See more</p>
@@ -1838,7 +1847,7 @@ export default function HomePage() {
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
-                    <p className="meta">{item.channel}</p>
+                    <p className="meta" title={item.regionalChannels?.join(", ")}>{formatChannelWithRegions(item)}</p>
                     <p className="meta">Starts: {formatDateTime(item.startAt)}</p>
                     <p className="summary">{trimSummary(item.summary)}</p>
                     <p className="meta card-cta">See more</p>
