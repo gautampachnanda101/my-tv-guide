@@ -549,7 +549,9 @@ export default function HomePage() {
   const [personalSources, setPersonalSources] = useState([]);
   const [catalogPage, setCatalogPage] = useState(1);
   const [mainTab, setMainTab] = useState("home");
-  const [browseTab, setBrowseTab] = useState("tvChannels");
+  // Programmes are the primary content; channels are reached via the
+  // Channel filter/tab, not shown as the default landing view.
+  const [browseTab, setBrowseTab] = useState("today");
   const [timelineDayOffset, setTimelineDayOffset] = useState(0);
   const [isTimelinePending, startTimelineTransition] = useTransition();
   const [selectedItem, setSelectedItem] = useState(null);
@@ -909,6 +911,25 @@ export default function HomePage() {
     });
   }, [guide.streamingApps, guide.tvChannels, appFilter, channelFilter]);
 
+  // Streaming-app cards need "programmes actually airing on this app right
+  // now", not just its static bundled-channel count - reuses the same
+  // watchVia matching that powers the Watch service filter dropdown.
+  const appLiveProgrammeCounts = useMemo(() => {
+    const counts = new Map();
+    for (const app of guide.streamingApps) {
+      const needles = [String(app.id).toLowerCase(), String(app.name || "").toLowerCase()].filter(Boolean);
+      const matches = (item) => {
+        const hints = [
+          ...toArray(item.watchVia),
+          ...(channelToWatchVia.get(String(item.channel || "").toLowerCase()) || [])
+        ].map((entry) => String(entry).toLowerCase());
+        return hints.length > 0 && needles.some((needle) => hints.some((hint) => hint.includes(needle) || needle.includes(hint)));
+      };
+      counts.set(app.id, guide.today.filter(matches).length + guide.liveNow.filter(matches).length);
+    }
+    return counts;
+  }, [guide.streamingApps, guide.today, guide.liveNow, channelToWatchVia]);
+
   const counts = useMemo(
     () => ({
       today: filteredToday.length,
@@ -973,8 +994,10 @@ export default function HomePage() {
         }))
         .filter((row) => row.items.length > 0);
 
+      // No cap: every channel with programmes in this window renders, same
+      // policy as the uncapped channel catalogue elsewhere in this file.
       rows.sort((a, b) => b.items.length - a.items.length);
-      result[dayKey] = rows.slice(0, 14);
+      result[dayKey] = rows;
     }
 
     return result;
@@ -1671,7 +1694,15 @@ export default function HomePage() {
               <span className="studio-icon" aria-hidden="true">
                 {item.key === "today" ? "◷" : item.key === "liveNow" ? "●" : item.key === "upcoming" ? "↗" : item.key === "tvChannels" ? "▦" : "▶"}
               </span>
-              {item.label} ({loading ? "…" : counts[item.key]})
+              {item.label} (
+              {loading
+                ? "…"
+                : // Channels stream in via infinite scroll, so the loaded-page
+                  // count would look like a fake cap; show the real filtered total.
+                  item.key === "tvChannels"
+                  ? guide.catalogTotal
+                  : counts[item.key]}
+              )
             </button>
           ))}
         </div>
@@ -1838,25 +1869,39 @@ export default function HomePage() {
 
         {!loading && !error && browseTab === "streamingApps" && filteredStreamingApps.length > 0 ? (
           <ul className="listing-grid visual apps">
-            {filteredStreamingApps.map((item) => (
-              <li key={item.id} className="listing-card">
-                <button type="button" className="card-link card-button" onClick={() => openDetails(item, "app")}>
-                  <MediaThumb image={item.logo} label={item.name} tag={item.category || "APP"} fit="contain" />
-                  <div className="card-body">
-                    <h3>{item.name}</h3>
-                    <p>{item.priceModel}</p>
-                    <p className="meta">Platforms: {item.platforms.join(", ")}</p>
-                    <p className="meta">Highlights: {item.highlights.join(" • ")}</p>
-                    <p className="meta availability-tag">
-                      {Array.isArray(item.channels) && item.channels.length > 0
-                        ? `Live channels: ${item.channels.length}`
-                        : "Available anytime"}
-                    </p>
-                    <p className="meta card-cta">See more</p>
-                  </div>
-                </button>
-              </li>
-            ))}
+            {filteredStreamingApps.map((item) => {
+              const hasChannels = Array.isArray(item.channels) && item.channels.length > 0;
+              const liveCount = appLiveProgrammeCounts.get(item.id) || 0;
+              return (
+                <li key={item.id} className="listing-card">
+                  <button type="button" className="card-link card-button" onClick={() => openDetails(item, "app")}>
+                    <MediaThumb image={item.logo} label={item.name} tag={item.category || "APP"} fit="contain" />
+                    <div className="card-body">
+                      <h3>{item.name}</h3>
+                      <p>{item.priceModel}</p>
+                      <p className="meta">Platforms: {item.platforms.join(", ")}</p>
+                      <p className="meta">Highlights: {item.highlights.join(" • ")}</p>
+                      <p className="meta availability-tag">
+                        {hasChannels ? `${liveCount} programme${liveCount === 1 ? "" : "s"} on now` : "On-demand catalogue"}
+                      </p>
+                      <p className="meta card-cta">See more</p>
+                    </div>
+                  </button>
+                  {hasChannels ? (
+                    <button
+                      type="button"
+                      className="cta cta-primary card-preview"
+                      onClick={() => {
+                        setAppFilter(item.id);
+                        setBrowseTab(liveCount > 0 ? "liveNow" : "today");
+                      }}
+                    >
+                      See programmes
+                    </button>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         ) : null}
       </section>
