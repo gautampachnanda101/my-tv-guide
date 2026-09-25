@@ -124,23 +124,6 @@ export default function VideoPlayer({
       setIsLoading(true);
       playbackStartedRef.current = false;
 
-      // Plenty of crowd-sourced IPTV streams are plain http:// - browsers
-      // block loading that as "mixed content" into this https:// page at
-      // the network layer, with no error event the player can catch, so
-      // it otherwise just looks like every other silently-stuck stream.
-      // Catching it up front gives an accurate reason instead of the
-      // generic timeout/failure message.
-      if (
-        typeof window !== "undefined" &&
-        window.location.protocol === "https:" &&
-        activeStreamUrl.toLowerCase().startsWith("http://")
-      ) {
-        setIsLoading(false);
-        playbackStartedRef.current = true;
-        setError('This stream uses an insecure (http://) address, which browsers block on this secure site. Use Open source to watch it in a new tab, or try another channel.');
-        return;
-      }
-
       if (stallTimeoutRef.current) clearTimeout(stallTimeoutRef.current);
       stallTimeoutRef.current = setTimeout(() => {
         if (!playbackStartedRef.current) {
@@ -158,6 +141,17 @@ export default function VideoPlayer({
       const lowerUrl = activeStreamUrl.toLowerCase();
       const isHLS = lowerUrl.includes('.m3u8') || lowerUrl.includes('.m3u');
 
+      // Plenty of crowd-sourced IPTV streams are plain http:// - browsers
+      // block loading that as "mixed content" into this https:// page at
+      // the network layer, with no error event the player can catch. Our
+      // own /api/stream-proxy fetches it server-side (no mixed-content rule
+      // applies there) and re-serves it from this https:// origin instead.
+      const needsHttpsProxy =
+        typeof window !== "undefined" &&
+        window.location.protocol === "https:" &&
+        lowerUrl.startsWith("http://");
+      const loadUrl = needsHttpsProxy ? `/api/stream-proxy?url=${encodeURIComponent(activeStreamUrl)}` : activeStreamUrl;
+
       if (isHLS) {
         // Prefer native HLS where the browser supports it, especially Safari.
         // HLS.js is the fallback for browsers that need Media Source Extensions.
@@ -166,7 +160,7 @@ export default function VideoPlayer({
           // <video> just by reassigning `.src` - without an explicit load(),
           // it keeps playing whatever was already buffered, so every "Play
           // now" click after the first looked like it played the same stream.
-          video.src = activeStreamUrl;
+          video.src = loadUrl;
           video.load();
           setIsLoading(false);
           if (autoPlay) {
@@ -190,7 +184,7 @@ export default function VideoPlayer({
             // owning playback by the time that fires.
             hlsRef.current = hls;
 
-            hls.loadSource(activeStreamUrl);
+            hls.loadSource(loadUrl);
             hls.attachMedia(video);
 
             hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -246,7 +240,7 @@ export default function VideoPlayer({
         }
       } else {
         // Direct video source
-        video.src = activeStreamUrl;
+        video.src = loadUrl;
         video.load();
         setIsLoading(false);
         if (autoPlay) {
