@@ -1024,6 +1024,16 @@ h2 {
      mobile, but still below the sidebar drawer itself (1002/1003) so
      opening the menu while a video plays still surfaces on top of it. */
   z-index: 1050;
+
+  /* Chromium has a known bug where an element using backdrop-filter that's
+     freshly inserted into the DOM (this overlay mounts fresh every time
+     the player opens) doesn't get its compositing layer/paint order
+     established correctly until something forces a repaint (a window
+     resize, in particular) - it visually renders behind position:fixed
+     siblings painted earlier (sidebar-toggle/account-badge) despite having
+     a higher z-index, until then. Forcing its own layer immediately on
+     mount avoids relying on an incidental repaint to fix it. */
+  transform: translateZ(0);
   display: grid;
   place-items: center;
   padding: 1rem;
