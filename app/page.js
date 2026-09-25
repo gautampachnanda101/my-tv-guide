@@ -1203,6 +1203,12 @@ export default function HomePage() {
     if (!streamUrl) return;
 
     setPlayingStream({
+      // Two different channels can share the same underlying playlist URL
+      // (e.g. a multi-channel M3U source) - keying VideoPlayer on this id
+      // forces a fresh remount per play request instead of reusing a
+      // previous play's internal state (like an already-picked playlist
+      // entry) just because the URL happens to match.
+      id: crypto.randomUUID(),
       streamUrl,
       channelName: item.channel || item.name || "Live stream",
       title: item.show || item.title || null
@@ -2231,6 +2237,7 @@ export default function HomePage() {
             <span aria-hidden="true">←</span> Back to guide
           </button>
           <VideoPlayer
+            key={playingStream.id}
             streamUrl={playingStream.streamUrl}
             channelName={playingStream.channelName}
             title={playingStream.title}
