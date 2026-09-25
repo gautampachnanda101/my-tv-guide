@@ -72,6 +72,17 @@ export default function VideoPlayer({
   // stream, so it never actually offered a way to recover. Bumping this
   // instead re-runs the load effect below in place.
   const [retryToken, setRetryToken] = useState(0);
+  // Forces the next load attempt through /api/stream-proxy even for an
+  // https:// source - set when a direct attempt fails with a network error,
+  // since some CDNs (e.g. Pluto TV) lock CORS to their own origin and
+  // reject any browser request from ours, which only a server-side fetch
+  // (not subject to CORS at all) can get past.
+  const [forceProxy, setForceProxy] = useState(false);
+  const usingProxyRef = useRef(false);
+
+  useEffect(() => {
+    setForceProxy(false);
+  }, [streamUrl, channelName]);
 
   const isChannelPlaylist = /\.m3u(?:$|\?)/i.test(streamUrl || "") && !/\.m3u8(?:$|\?)/i.test(streamUrl || "");
   const activeStreamUrl = isChannelPlaylist ? selectedPlaylistUrl : streamUrl;
@@ -150,7 +161,9 @@ export default function VideoPlayer({
         typeof window !== "undefined" &&
         window.location.protocol === "https:" &&
         lowerUrl.startsWith("http://");
-      const loadUrl = needsHttpsProxy ? `/api/stream-proxy?url=${encodeURIComponent(activeStreamUrl)}` : activeStreamUrl;
+      const usingProxy = needsHttpsProxy || forceProxy;
+      usingProxyRef.current = usingProxy;
+      const loadUrl = usingProxy ? `/api/stream-proxy?url=${encodeURIComponent(activeStreamUrl)}` : activeStreamUrl;
 
       if (isHLS) {
         // Prefer native HLS where the browser supports it, especially Safari.
@@ -199,9 +212,21 @@ export default function VideoPlayer({
 
             hls.on(Hls.Events.ERROR, (event, data) => {
               console.error('HLS error:', data);
-              if (data.fatal) {
-                setIsLoading(false);
-                switch (data.type) {
+              if (!data.fatal) return;
+
+              // Some CDNs (e.g. Pluto TV) lock CORS to their own origin and
+              // reject any request from ours, which hls.js reports as a
+              // generic NETWORK_ERROR - a server-side fetch isn't subject to
+              // CORS at all, so retry once through our own proxy before
+              // giving up.
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !usingProxy) {
+                setForceProxy(true);
+                setRetryToken((current) => current + 1);
+                return;
+              }
+
+              setIsLoading(false);
+              switch (data.type) {
                   case Hls.ErrorTypes.NETWORK_ERROR: {
                     // HLS.js buckets both real connectivity failures and
                     // the source's own CDN rejecting the request (401/403 -
@@ -227,7 +252,6 @@ export default function VideoPlayer({
                     setError('This channel could not be played here. Try another channel or use Open source.');
                     break;
                 }
-              }
             });
           } else {
             setIsLoading(false);
@@ -265,7 +289,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [activeStreamUrl, autoPlay, retryToken]);
+  }, [activeStreamUrl, autoPlay, retryToken, forceProxy]);
 
   // Handle play/pause
   const togglePlay = () => {
@@ -378,6 +402,15 @@ export default function VideoPlayer({
     // otherwise recovered from, so skip it whenever hls.js is attached.
     const handleVideoError = () => {
       if (hlsRef.current) return;
+      // Native HLS (Safari) also enforces CORS on cross-origin manifest
+      // loads - a CDN that locks it to its own site's origin fails here
+      // exactly like it does in hls.js, just as a generic native error.
+      // Retry once through the server-side proxy before giving up.
+      if (!usingProxyRef.current) {
+        setForceProxy(true);
+        setRetryToken((current) => current + 1);
+        return;
+      }
       playbackStartedRef.current = true;
       setIsLoading(false);
       setError('This channel could not play on this device or network. Try another channel or use Open source.');
