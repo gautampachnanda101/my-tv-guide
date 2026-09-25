@@ -1018,7 +1018,12 @@ h2 {
 .detail-overlay {
   position: fixed;
   inset: 0;
-  z-index: 45;
+
+  /* Above the always-visible sidebar-toggle/account-badge (z-index 1001) so
+     the player's own back/close button isn't stuck underneath them on
+     mobile, but still below the sidebar drawer itself (1002/1003) so
+     opening the menu while a video plays still surfaces on top of it. */
+  z-index: 1050;
   display: grid;
   place-items: center;
   padding: 1rem;
