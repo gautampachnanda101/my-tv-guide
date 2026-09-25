@@ -1,4 +1,4 @@
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 
 function parseObjectEnv(name) {
@@ -40,9 +40,6 @@ export default async function AdminPage({ searchParams }) {
           <h1>Global sources</h1>
           <p className="subhead">Signed in as {session.user.githubLogin}. Secrets stay on the server.</p>
         </div>
-        <form action={async () => { "use server"; await signOut({ redirectTo: "/" }); }}>
-          <button type="submit" className="cta cta-secondary">Sign out</button>
-        </form>
       </header>
       <section className="panel" style={{ marginTop: "1.5rem" }}>
         <h2>Configured sources</h2>

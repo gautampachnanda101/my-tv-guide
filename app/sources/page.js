@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { auth, signIn, signOut } from "@/auth";
+import { auth, signIn } from "@/auth";
 import { isUserStoreAvailable, listUserStreams } from "@/lib/sources/userStreams";
 
 export default async function SourcesPage({ searchParams }) {
@@ -10,17 +10,8 @@ export default async function SourcesPage({ searchParams }) {
 
   return (
     <main className="page-shell" style={{ maxWidth: 960, margin: "0 auto" }}>
-      <header className="section-title-row">
-        <div>
-          <p className="eyebrow">Personal sources</p>
-          <h1>My streams</h1>
-        </div>
-        {session?.user ? (
-          <form action={async () => { "use server"; await signOut({ redirectTo: "/sources" }); }}>
-            <button type="submit" className="cta cta-secondary">Sign out</button>
-          </form>
-        ) : null}
-      </header>
+      <p className="eyebrow">Personal sources</p>
+      <h1>My streams</h1>
       <p><Link className="watch-link" href="/">Back to guide</Link></p>
 
       <section className="panel legal-warning" style={{ marginTop: "1rem" }}>
