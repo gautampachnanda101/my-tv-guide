@@ -665,6 +665,12 @@ export default function HomePage() {
   // Programmes are the primary content; channels are reached via the
   // Channel filter/tab, not shown as the default landing view.
   const [browseTab, setBrowseTab] = useState("today");
+  // Today/Live now/Up next can each hold thousands of matching programmes -
+  // rendering every one of them on every filter/search/tab change was the
+  // cause of multi-second-long input delay (INP). Render a bounded window
+  // instead, with "Show more" to reveal the rest on demand.
+  const LIST_PAGE_SIZE = 60;
+  const [listVisibleCount, setListVisibleCount] = useState(LIST_PAGE_SIZE);
   const [timelineDayOffset, setTimelineDayOffset] = useState(0);
   const [isTimelinePending, startTimelineTransition] = useTransition();
   const [selectedItem, setSelectedItem] = useState(null);
@@ -996,6 +1002,13 @@ export default function HomePage() {
   const filteredToday = useMemo(() => guide.today.filter(programmeMatchesFilters), [guide.today, programmeMatchesFilters]);
   const filteredLiveNow = useMemo(() => guide.liveNow.filter(programmeMatchesFilters), [guide.liveNow, programmeMatchesFilters]);
   const filteredUpcoming = useMemo(() => guide.upcoming.filter(programmeMatchesFilters), [guide.upcoming, programmeMatchesFilters]);
+
+  // Whatever made the visible list change (new tab, new search, a filter, a
+  // quick-pick chip) should start back at the top of a fresh bounded window,
+  // not silently keep whatever count was reached in a previously viewed list.
+  useEffect(() => {
+    setListVisibleCount(LIST_PAGE_SIZE);
+  }, [browseTab, query, channelFilter, countryFilter, genreFilter, appFilter]);
 
   const filteredTvChannels = useMemo(() => {
     return guide.tvChannels.filter((item) => {
@@ -1880,7 +1893,7 @@ export default function HomePage() {
         ) : null}
         {!loading && !error && browseTab === "today" && filteredToday.length > 0 ? (
           <ul className="listing-grid visual">
-            {filteredToday.map((item) => (
+            {filteredToday.slice(0, listVisibleCount).map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
                   <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="TODAY" />
@@ -1902,6 +1915,13 @@ export default function HomePage() {
             ))}
           </ul>
         ) : null}
+        {!loading && !error && browseTab === "today" && filteredToday.length > listVisibleCount ? (
+          <div className="section-actions">
+            <button type="button" className="ghost" onClick={() => setListVisibleCount((current) => current + LIST_PAGE_SIZE)}>
+              Show more ({filteredToday.length - listVisibleCount} left)
+            </button>
+          </div>
+        ) : null}
 
         {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length === 0 ? (
           <p className="state">
@@ -1912,7 +1932,7 @@ export default function HomePage() {
         ) : null}
         {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length > 0 ? (
           <ul className="listing-grid visual">
-            {filteredLiveNow.map((item) => (
+            {filteredLiveNow.slice(0, listVisibleCount).map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
                   <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="LIVE" />
@@ -1934,6 +1954,13 @@ export default function HomePage() {
             ))}
           </ul>
         ) : null}
+        {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length > listVisibleCount ? (
+          <div className="section-actions">
+            <button type="button" className="ghost" onClick={() => setListVisibleCount((current) => current + LIST_PAGE_SIZE)}>
+              Show more ({filteredLiveNow.length - listVisibleCount} left)
+            </button>
+          </div>
+        ) : null}
 
         {!loading && !error && browseTab === "upcoming" && filteredUpcoming.length === 0 ? (
           <p className="state">
@@ -1944,7 +1971,7 @@ export default function HomePage() {
         ) : null}
         {!loading && !error && browseTab === "upcoming" && filteredUpcoming.length > 0 ? (
           <ul className="listing-grid visual">
-            {filteredUpcoming.map((item) => (
+            {filteredUpcoming.slice(0, listVisibleCount).map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
                   <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="UP NEXT" />
@@ -1965,6 +1992,13 @@ export default function HomePage() {
               </li>
             ))}
           </ul>
+        ) : null}
+        {!loading && !error && browseTab === "upcoming" && filteredUpcoming.length > listVisibleCount ? (
+          <div className="section-actions">
+            <button type="button" className="ghost" onClick={() => setListVisibleCount((current) => current + LIST_PAGE_SIZE)}>
+              Show more ({filteredUpcoming.length - listVisibleCount} left)
+            </button>
+          </div>
         ) : null}
 
         {!loading && !error && browseTab === "tvChannels" && filteredTvChannels.length === 0 ? (
