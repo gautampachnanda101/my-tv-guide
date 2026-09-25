@@ -139,13 +139,55 @@ function slugify(value) {
 // Channel4 and Channel5's own slugs are just the lowercased, hyphenated
 // show title, so a title-only guess actually lands on the real page for
 // most shows (confirmed: channel4.com/programmes/hit-point).
+// BBC iPlayer's live-channel pages, keyed by network (verified live on both
+// bbc.co.uk/iplayer and freely.co.uk, which links its own channel tiles
+// straight to these same URLs). Regional opt-outs ("BBC One London", "BBC
+// One Wales", ...) all share their parent network's page, so this only
+// needs to key on the network, not every regional variant.
+const BBC_IPLAYER_LIVE_SLUGS = {
+  "bbc one": "bbcone",
+  "bbc two": "bbctwo",
+  "bbc three": "bbcthree",
+  "bbc four": "bbcfour",
+  "bbc news": "bbcnews",
+  "bbc parliament": "bbcparliament",
+  "bbc scotland": "bbcscotland",
+  "bbc alba": "bbcalba",
+  cbbc: "cbbc",
+  cbeebies: "cbeebies"
+};
+
+// Mirrors the network-key logic used server-side for grouping regional
+// simulcasts (lib/providers/uk/index.js#scheduleNetworkKey): the network
+// brand is always the leading word(s) of the channel name.
+function broadcastNetworkKey(channelName) {
+  const tokens = normalizeFilterText(channelName).split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return "";
+  const [first, second] = tokens;
+  if (["bbc", "itv", "channel"].includes(first) && second) return `${first} ${second}`;
+  return first;
+}
+
+function bbcIplayerLiveUrl(channelName) {
+  const slug = BBC_IPLAYER_LIVE_SLUGS[broadcastNetworkKey(channelName)];
+  return slug ? `https://www.bbc.co.uk/iplayer/live/${slug}` : null;
+}
+
 const WATCH_PROVIDERS = {
+  // No `buildProgrammeUrl`/`buildSearchUrl`: Freely is a smart-TV hardware
+  // platform, not a website - freely.co.uk has no programme pages or search
+  // of its own. Its own "what's on now" tiles link straight out to the
+  // matching broadcaster's page (confirmed live), which is what
+  // `getWatchViaLink` does for a "Freely" hint below before landing here.
   freely: { homepage: "https://www.freely.co.uk/" },
-  // Confirmed broken by live testing: bbc.co.uk/iplayer/search?q= does not
-  // resolve to a real search page. bbc.co.uk also can't be verified from
-  // here (blocks automated fetches), so rather than guess again, this
-  // falls back to the homepage until a real pattern is confirmed.
-  iplayer: { homepage: "https://www.bbc.co.uk/iplayer" },
+  // bbc.co.uk/iplayer/search?q= doesn't resolve to a real search page, but
+  // the live-channel pages do (confirmed live) - every schedule item here
+  // already carries the channel it's airing on, so that's a real deep link
+  // to the actual programme, not just the iPlayer homepage.
+  iplayer: {
+    homepage: "https://www.bbc.co.uk/iplayer",
+    buildLiveUrl: bbcIplayerLiveUrl
+  },
   itvx: { homepage: "https://www.itv.com/watch" }, // no reliable pattern found (ITVX's search page didn't respond to verification attempts)
   channel4: {
     homepage: "https://www.channel4.com/",
@@ -236,9 +278,13 @@ const providerIdByName = {
   plex: "plex"
 };
 
-function buildProviderUrl(providerId, title) {
+function buildProviderUrl(providerId, title, channel) {
   const provider = WATCH_PROVIDERS[providerId];
   if (!provider) return null;
+  if (channel && provider.buildLiveUrl) {
+    const liveUrl = provider.buildLiveUrl(channel);
+    if (liveUrl) return liveUrl;
+  }
   if (title) {
     if (provider.buildProgrammeUrl) return provider.buildProgrammeUrl(title);
     if (provider.buildSearchUrl) return provider.buildSearchUrl(title);
@@ -460,7 +506,7 @@ function getSourceLink(source) {
   return source.url || source.defaultUrl || null;
 }
 
-function getWatchViaLink(value, title) {
+function getWatchViaLink(value, title, channel) {
   const key = String(value || "")
     .toLowerCase()
     .replace(/[^a-z0-9+]+/g, " ")
@@ -473,7 +519,21 @@ function getWatchViaLink(value, title) {
     providerIdByName[key] ||
     providerIdByName[String(value || "").toLowerCase()] ||
     (bareKey !== key ? providerIdByName[bareKey] : null);
-  return providerId ? buildProviderUrl(providerId, title) : null;
+  if (!providerId) return null;
+
+  // Freely has no web pages of its own (see WATCH_PROVIDERS.freely) - defer
+  // to whichever real broadcaster page this channel resolves to, exactly
+  // like Freely's own "what's on now" tiles do, instead of always landing
+  // on Freely's marketing homepage.
+  if (providerId === "freely" && channel) {
+    const broadcasterId = BBC_IPLAYER_LIVE_SLUGS[broadcastNetworkKey(channel)] ? "iplayer" : null;
+    if (broadcasterId) {
+      const broadcasterUrl = buildProviderUrl(broadcasterId, title, channel);
+      if (broadcasterUrl) return broadcasterUrl;
+    }
+  }
+
+  return buildProviderUrl(providerId, title, channel);
 }
 
 function pushUniqueTarget(targets, seen, label, href) {
@@ -501,7 +561,7 @@ function getWatchTargets(item, type = "programme") {
   if (item.channelWebsite) pushUniqueTarget(targets, seen, "Open channel site", item.channelWebsite);
 
   for (const hint of toArray(item.watchVia)) {
-    const href = getWatchViaLink(hint, title);
+    const href = getWatchViaLink(hint, title, item.channel);
     if (href) pushUniqueTarget(targets, seen, `Watch on ${hint}`, href);
   }
 
