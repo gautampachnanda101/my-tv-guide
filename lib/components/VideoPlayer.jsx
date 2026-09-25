@@ -93,7 +93,17 @@ export default function VideoPlayer({
       const isHLS = lowerUrl.includes('.m3u8') || lowerUrl.includes('.m3u');
 
       if (isHLS) {
-        // Dynamically import HLS.js
+        // Prefer native HLS where the browser supports it, especially Safari.
+        // HLS.js is the fallback for browsers that need Media Source Extensions.
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = activeStreamUrl;
+          setIsLoading(false);
+          if (autoPlay) {
+            video.play().catch(() => setError('Playback is ready. Press play to start.'));
+          }
+          return;
+        }
+
         try {
           const Hls = (await import('hls.js')).default;
 
@@ -119,6 +129,7 @@ export default function VideoPlayer({
             hls.on(Hls.Events.ERROR, (event, data) => {
               console.error('HLS error:', data);
               if (data.fatal) {
+                setIsLoading(false);
                 switch (data.type) {
                   case Hls.ErrorTypes.NETWORK_ERROR: {
                     // HLS.js buckets both real connectivity failures and
@@ -129,40 +140,34 @@ export default function VideoPlayer({
                     // worth auto-retrying.
                     const status = data.response?.code;
                     if (status === 401 || status === 403) {
-                      setError('This stream refused the connection (blocked by its source) - try a different channel.');
+                      setError('This channel is not available here right now. Try another channel or use Open source.');
+                    } else if (data.response?.code === 404 || data.response?.code === 410) {
+                      setError('This channel is no longer available. Try another channel or use Open source.');
                     } else {
-                      setError('This source does not allow playback inside the guide. Use Open source to watch it in a new tab, or try another channel.');
+                      setError('This channel cannot play in the guide right now. Use Open source to watch it in a new tab, or try another channel.');
                     }
                     break;
                   }
                   case Hls.ErrorTypes.MEDIA_ERROR:
-                    setError('Media error. Attempting recovery...');
+                    setError('This channel could not start in the player. Try another channel or use Open source.');
                     hls.recoverMediaError();
                     break;
                   default:
-                    setError('Fatal error. Cannot play this stream.');
+                    setError('This channel could not be played here. Try another channel or use Open source.');
                     break;
                 }
               }
             });
 
             hlsRef.current = hls;
-          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            // Native HLS support (Safari)
-            video.src = activeStreamUrl;
-            setIsLoading(false);
-            if (autoPlay) {
-              video.play().catch(e => {
-                console.error('Auto-play failed:', e);
-                setError('Auto-play blocked. Click play to start.');
-              });
-            }
           } else {
-            setError('HLS not supported in this browser.');
+            setIsLoading(false);
+            setError('This channel format is not supported in this browser. Try Open source or another channel.');
           }
         } catch (err) {
           console.error('Failed to load HLS.js:', err);
-          setError('Failed to load video player library.');
+          setIsLoading(false);
+          setError('The player could not start this channel. Try Open source or another channel.');
         }
       } else {
         // Direct video source
