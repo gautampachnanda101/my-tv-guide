@@ -671,11 +671,16 @@ function getPlayableStreamMeta(streamUrl, item, fallbackItem = null) {
   const streamItems = [...(item?.streamItems || []), ...(fallbackItem?.streamItems || [])];
   const matched = streamItems.find((candidate) => candidate?.url === streamUrl);
   if (matched) {
-    return { referrer: matched.referrer || null, userAgent: matched.userAgent || null };
+    return {
+      referrer: matched.referrer || null,
+      userAgent: matched.userAgent || null,
+      geoBlocked: Boolean(matched.geoBlocked)
+    };
   }
   return {
     referrer: item?.streamReferrer || fallbackItem?.streamReferrer || null,
-    userAgent: item?.streamUserAgent || fallbackItem?.streamUserAgent || null
+    userAgent: item?.streamUserAgent || fallbackItem?.streamUserAgent || null,
+    geoBlocked: Boolean(item?.streamGeoBlocked || fallbackItem?.streamGeoBlocked)
   };
 }
 
@@ -1250,6 +1255,7 @@ export default function HomePage() {
       streamUrl,
       streamReferrer: streamMeta.referrer,
       streamUserAgent: streamMeta.userAgent,
+      streamGeoBlocked: streamMeta.geoBlocked,
       channelName: item.channel || item.name || "Live stream",
       title: item.show || item.title || null
     });
@@ -2281,6 +2287,7 @@ export default function HomePage() {
             streamUrl={playingStream.streamUrl}
             streamReferrer={playingStream.streamReferrer}
             streamUserAgent={playingStream.streamUserAgent}
+            streamGeoBlocked={playingStream.streamGeoBlocked}
             channelName={playingStream.channelName}
             title={playingStream.title}
             autoPlay

@@ -39,6 +39,7 @@ export default function VideoPlayer({
   streamUrl,
   streamReferrer,
   streamUserAgent,
+  streamGeoBlocked,
   channelName,
   title,
   autoPlay = false,
@@ -141,7 +142,11 @@ export default function VideoPlayer({
       stallTimeoutRef.current = setTimeout(() => {
         if (!playbackStartedRef.current) {
           setIsLoading(false);
-          setError('This channel is taking too long to load - it may be blocked on this network or temporarily down. Try another channel or use Open source.');
+          setError(
+            streamGeoBlocked
+              ? 'This channel is restricted to viewers in the UK and may not be available on this network. Try another channel or use Open source.'
+              : 'This channel is taking too long to load - it may be blocked on this network or temporarily down. Try another channel or use Open source.'
+          );
         }
       }, 15000);
 
@@ -229,8 +234,12 @@ export default function VideoPlayer({
               // reject any request from ours, which hls.js reports as a
               // generic NETWORK_ERROR - a server-side fetch isn't subject to
               // CORS at all, so retry once through our own proxy before
-              // giving up.
-              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !usingProxy) {
+              // giving up. Skipped for known geo-blocked streams: our proxy
+              // runs from a fixed, non-UK Vercel region, so it can only
+              // fail the exact same way - the browser's own request, from
+              // the visitor's real location, is the only attempt with any
+              // chance of working.
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !usingProxy && !streamGeoBlocked) {
                 setForceProxy(true);
                 setRetryToken((current) => current + 1);
                 return;
@@ -300,7 +309,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [activeStreamUrl, autoPlay, retryToken, forceProxy, streamReferrer, streamUserAgent]);
+  }, [activeStreamUrl, autoPlay, retryToken, forceProxy, streamReferrer, streamUserAgent, streamGeoBlocked]);
 
   // Handle play/pause
   const togglePlay = () => {
@@ -416,15 +425,21 @@ export default function VideoPlayer({
       // Native HLS (Safari) also enforces CORS on cross-origin manifest
       // loads - a CDN that locks it to its own site's origin fails here
       // exactly like it does in hls.js, just as a generic native error.
-      // Retry once through the server-side proxy before giving up.
-      if (!usingProxyRef.current) {
+      // Retry once through the server-side proxy before giving up, unless
+      // this stream is known geo-blocked - our proxy runs from a fixed,
+      // non-UK Vercel region and would only fail the same way.
+      if (!usingProxyRef.current && !streamGeoBlocked) {
         setForceProxy(true);
         setRetryToken((current) => current + 1);
         return;
       }
       playbackStartedRef.current = true;
       setIsLoading(false);
-      setError('This channel could not play on this device or network. Try another channel or use Open source.');
+      setError(
+        streamGeoBlocked
+          ? 'This channel is restricted to viewers in the UK and may not be available on this network. Try another channel or use Open source.'
+          : 'This channel could not play on this device or network. Try another channel or use Open source.'
+      );
     };
 
     video.addEventListener('play', handlePlay);
@@ -440,6 +455,11 @@ export default function VideoPlayer({
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('error', handleVideoError);
     };
+    // Intentionally mount-once: VideoPlayer remounts fresh per play request
+    // (key={id} at the call site), so streamGeoBlocked is already correct
+    // for whichever stream is currently loaded and doesn't need to
+    // retrigger this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!streamUrl) {
