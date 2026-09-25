@@ -1045,7 +1045,13 @@ h2 {
   position: absolute;
   top: 1rem;
   left: 1rem;
-  z-index: 3;
+
+  /* .videoWrapper has no z-index of its own, so it doesn't start a new
+     stacking context - VideoPlayer's internal overlays (.errorOverlay/
+     .loadingOverlay, both z-index 10) are compared directly against this
+     button in the SAME context established by .detail-overlay, and were
+     winning outright, covering this button whenever a stream errored. */
+  z-index: 20;
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
