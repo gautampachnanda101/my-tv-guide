@@ -2,6 +2,10 @@ import { getGuideData, getSupportedRegions } from "@/lib/providers";
 
 // Cache API responses for 5 minutes (300 seconds)
 export const revalidate = 300;
+// A cold container's first build (no cached dataset yet) parses tens of
+// thousands of schedule items and can take longer than Vercel's default
+// function timeout - give it real headroom instead of being killed mid-build.
+export const maxDuration = 30;
 
 function toSafeQuery(searchParams) {
   const raw = searchParams.get("q") || "";
