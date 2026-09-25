@@ -118,6 +118,24 @@ export default function VideoPlayer({
       setAutoplayBlocked(false);
       setIsLoading(true);
       playbackStartedRef.current = false;
+
+      // Plenty of crowd-sourced IPTV streams are plain http:// - browsers
+      // block loading that as "mixed content" into this https:// page at
+      // the network layer, with no error event the player can catch, so
+      // it otherwise just looks like every other silently-stuck stream.
+      // Catching it up front gives an accurate reason instead of the
+      // generic timeout/failure message.
+      if (
+        typeof window !== "undefined" &&
+        window.location.protocol === "https:" &&
+        activeStreamUrl.toLowerCase().startsWith("http://")
+      ) {
+        setIsLoading(false);
+        playbackStartedRef.current = true;
+        setError('This stream uses an insecure (http://) address, which browsers block on this secure site. Use Open source to watch it in a new tab, or try another channel.');
+        return;
+      }
+
       if (stallTimeoutRef.current) clearTimeout(stallTimeoutRef.current);
       stallTimeoutRef.current = setTimeout(() => {
         if (!playbackStartedRef.current) {
