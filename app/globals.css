@@ -29,7 +29,7 @@ body {
   font-family: Aptos, "Segoe UI", system-ui, sans-serif;
   background: transparent;
   color-scheme: dark;
-  text-rendering: optimizeLegibility;
+  text-rendering: optimizelegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -827,7 +827,7 @@ h2 {
   flex: 0 0 1.1rem;
   font-size: 1rem;
   line-height: 1;
-  color: currentColor;
+  color: currentcolor;
 }
 
 .studio-tabs .tab-pill.active .studio-icon {
