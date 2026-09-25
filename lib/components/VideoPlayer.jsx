@@ -31,6 +31,12 @@ export default function VideoPlayer({
   const [volume, setVolume] = useState(1);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [error, setError] = useState(null);
+  // Autoplay being blocked by the browser isn't a real playback error - it
+  // just needs a user gesture. Treating it as `error` rendered the same
+  // full-screen "something's wrong" overlay (with only "Open source"/
+  // "Retry" buttons), which sits on top of and hides the actual play
+  // button it was telling the user to press.
+  const [autoplayBlocked, setAutoplayBlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playlistEntries, setPlaylistEntries] = useState([]);
@@ -83,6 +89,7 @@ export default function VideoPlayer({
       if (!activeStreamUrl || !videoRef.current) return;
 
       setError(null);
+      setAutoplayBlocked(false);
       setIsLoading(true);
 
       const video = videoRef.current;
@@ -106,7 +113,7 @@ export default function VideoPlayer({
           video.load();
           setIsLoading(false);
           if (autoPlay) {
-            video.play().catch(() => setError('Playback is ready. Press play to start.'));
+            video.play().catch(() => setAutoplayBlocked(true));
           }
           return;
         }
@@ -128,7 +135,7 @@ export default function VideoPlayer({
               if (autoPlay) {
                 video.play().catch(e => {
                   console.error('Auto-play failed:', e);
-                  setError('Auto-play blocked. Click play to start.');
+                  setAutoplayBlocked(true);
                 });
               }
             });
@@ -184,7 +191,7 @@ export default function VideoPlayer({
         if (autoPlay) {
           video.play().catch(e => {
             console.error('Auto-play failed:', e);
-            setError('Auto-play blocked. Click play to start.');
+            setAutoplayBlocked(true);
           });
         }
       }
@@ -207,7 +214,10 @@ export default function VideoPlayer({
 
     if (videoRef.current.paused) {
       videoRef.current.play()
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          setIsPlaying(true);
+          setAutoplayBlocked(false);
+        })
         .catch(e => setError('Failed to play video'));
     } else {
       videoRef.current.pause();
@@ -271,7 +281,7 @@ export default function VideoPlayer({
     setControlsVisible(true);
     if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
     if (!isPlaying) return;
-    hideControlsTimeoutRef.current = setTimeout(() => setControlsVisible(false), 3000);
+    hideControlsTimeoutRef.current = setTimeout(() => setControlsVisible(false), 5000);
   };
 
   useEffect(() => {
@@ -287,7 +297,10 @@ export default function VideoPlayer({
     const video = videoRef.current;
     if (!video) return;
 
-    const handlePlay = () => setIsPlaying(true);
+    const handlePlay = () => {
+      setIsPlaying(true);
+      setAutoplayBlocked(false);
+    };
     const handlePause = () => setIsPlaying(false);
     const handleWaiting = () => setIsLoading(true);
     const handleCanPlay = () => setIsLoading(false);
@@ -345,7 +358,8 @@ export default function VideoPlayer({
         )}
       </div>
 
-      <div className={styles.videoWrapper} onMouseMove={revealControls} onTouchStart={revealControls}>
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- convenience reveal-on-click for mouse/touch; the actual controls underneath are the real interactive/keyboard-reachable elements */}
+      <div className={styles.videoWrapper} onMouseMove={revealControls} onTouchStart={revealControls} onClick={revealControls}>
         {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live stream has no captions track available */}
         <video
           ref={videoRef}
@@ -375,6 +389,17 @@ export default function VideoPlayer({
               Retry
             </button>
           </div>
+        )}
+
+        {!error && !isLoading && autoplayBlocked && (
+          <button
+            type="button"
+            className={styles.autoplayPrompt}
+            onClick={togglePlay}
+            aria-label="Press play to start"
+          >
+            <span aria-hidden="true">▶</span> Press play to start
+          </button>
         )}
 
         <div className={`${styles.controls} ${controlsVisible ? styles.controlsVisible : ""}`}>

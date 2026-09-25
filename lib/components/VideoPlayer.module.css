@@ -183,6 +183,30 @@
   background: #0056b3;
 }
 
+.autoplayPrompt {
+  position: absolute;
+  left: 50%;
+  bottom: 68px; /* sits just above .controls instead of covering the video */
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: white;
+  border: none;
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 4; /* below .controls (5) so the real play button stays reachable */
+}
+
+.autoplayPrompt:hover {
+  background: rgba(0, 0, 0, 0.45);
+}
+
 .controls {
   position: absolute;
   bottom: 0;
