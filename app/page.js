@@ -173,6 +173,42 @@ function bbcIplayerLiveUrl(channelName) {
   return slug ? `https://www.bbc.co.uk/iplayer/live/${slug}` : null;
 }
 
+// BBC Sounds live-radio slugs (verified live on bbc.co.uk/sounds's "Listen
+// Live" rail) - mirrors lib/providers/uk/index.js#BBC_SOUNDS_LIVE_SLUGS.
+// Radio station names ('BBC Radio 1', 'BBC Asian Network') also start with
+// "bbc", so without this they'd otherwise resolve as if they were BBC One/
+// Two/etc TV channels and get sent to Freely/iPlayer, neither of which
+// carries radio at all.
+const BBC_SOUNDS_LIVE_SLUGS = {
+  "radio 1": "bbc_radio_one",
+  "radio 1xtra": "bbc_1xtra",
+  "1xtra": "bbc_1xtra",
+  "radio 2": "bbc_radio_two",
+  "radio 3": "bbc_radio_three",
+  "radio 4": "bbc_radio_fourfm",
+  "radio 4 extra": "bbc_radio_four_extra",
+  "radio 5 live": "bbc_radio_five_live",
+  "5 live": "bbc_radio_five_live",
+  "6 music": "bbc_6music",
+  "radio 6 music": "bbc_6music",
+  "asian network": "bbc_asian_network",
+  "world service": "bbc_world_service",
+  "radio scotland": "bbc_radio_scotland_fm",
+  "radio nan gaidheal": "bbc_radio_nan_gaidheal",
+  "radio ulster": "bbc_radio_ulster",
+  "radio foyle": "bbc_radio_foyle",
+  "radio wales": "bbc_radio_wales_fm",
+  "radio cymru": "bbc_radio_cymru",
+  "radio cymru 2": "bbc_radio_cymru_2",
+  "cbeebies radio": "cbeebies_radio"
+};
+
+function bbcSoundsLiveUrl(channelName) {
+  const key = normalizeFilterText(channelName).replace(/^bbc\s+/, "");
+  const slug = BBC_SOUNDS_LIVE_SLUGS[key];
+  return slug ? `https://www.bbc.co.uk/sounds/play/live/${slug}` : null;
+}
+
 const WATCH_PROVIDERS = {
   // No `buildProgrammeUrl`/`buildSearchUrl`: Freely is a smart-TV hardware
   // platform, not a website - freely.co.uk has no programme pages or search
@@ -187,6 +223,10 @@ const WATCH_PROVIDERS = {
   iplayer: {
     homepage: "https://www.bbc.co.uk/iplayer",
     buildLiveUrl: bbcIplayerLiveUrl
+  },
+  sounds: {
+    homepage: "https://www.bbc.co.uk/sounds",
+    buildLiveUrl: bbcSoundsLiveUrl
   },
   itvx: { homepage: "https://www.itv.com/watch" }, // no reliable pattern found (ITVX's search page didn't respond to verification attempts)
   channel4: {
@@ -240,6 +280,8 @@ const providerIdByName = {
   freely: "freely",
   "bbc iplayer": "iplayer",
   iplayer: "iplayer",
+  "bbc sounds": "sounds",
+  sounds: "sounds",
   "bbc one": "iplayer",
   "bbc two": "iplayer",
   "bbc three": "iplayer",
