@@ -46,6 +46,11 @@ export default function VideoPlayer({
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const hideControlsTimeoutRef = useRef(null);
+  const stallTimeoutRef = useRef(null);
+  // Some IPTV streams (often geo-blocked or down) never fire a manifest/
+  // media error - they just hang forever, which on mobile networks looked
+  // like a permanently stuck loading spinner instead of an actual failure.
+  const playbackStartedRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(muted);
   const [volume, setVolume] = useState(1);
@@ -112,6 +117,14 @@ export default function VideoPlayer({
       setError(null);
       setAutoplayBlocked(false);
       setIsLoading(true);
+      playbackStartedRef.current = false;
+      if (stallTimeoutRef.current) clearTimeout(stallTimeoutRef.current);
+      stallTimeoutRef.current = setTimeout(() => {
+        if (!playbackStartedRef.current) {
+          setIsLoading(false);
+          setError('This channel is taking too long to load - it may be blocked on this network or temporarily down. Try another channel or use Open source.');
+        }
+      }, 15000);
 
       const video = videoRef.current;
 
@@ -222,6 +235,10 @@ export default function VideoPlayer({
 
     // Cleanup
     return () => {
+      if (stallTimeoutRef.current) {
+        clearTimeout(stallTimeoutRef.current);
+        stallTimeoutRef.current = null;
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -321,21 +338,36 @@ export default function VideoPlayer({
     const handlePlay = () => {
       setIsPlaying(true);
       setAutoplayBlocked(false);
+      playbackStartedRef.current = true;
     };
     const handlePause = () => setIsPlaying(false);
     const handleWaiting = () => setIsLoading(true);
-    const handleCanPlay = () => setIsLoading(false);
+    const handleCanPlay = () => {
+      setIsLoading(false);
+      playbackStartedRef.current = true;
+    };
+    // Native HLS (Safari/iOS) sets isLoading false optimistically right after
+    // `.load()`, without waiting for real data - if the manifest is blocked
+    // or the stream is down, the <video> element fires its own 'error' here
+    // rather than through hls.js, and previously nothing was listening for it.
+    const handleVideoError = () => {
+      playbackStartedRef.current = true;
+      setIsLoading(false);
+      setError('This channel could not play on this device or network. Try another channel or use Open source.');
+    };
 
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('canplay', handleCanPlay);
+    video.addEventListener('error', handleVideoError);
 
     return () => {
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('canplay', handleCanPlay);
+      video.removeEventListener('error', handleVideoError);
     };
   }, []);
 
