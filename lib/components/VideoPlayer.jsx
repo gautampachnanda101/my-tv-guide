@@ -67,6 +67,11 @@ export default function VideoPlayer({
   const [playlistEntries, setPlaylistEntries] = useState([]);
   const [selectedPlaylistUrl, setSelectedPlaylistUrl] = useState("");
   const [playlistLoading, setPlaylistLoading] = useState(false);
+  // "Retry" used to be a full window.location.reload() - that lost the
+  // user's place in the guide and still re-loaded the exact same failing
+  // stream, so it never actually offered a way to recover. Bumping this
+  // instead re-runs the load effect below in place.
+  const [retryToken, setRetryToken] = useState(0);
 
   const isChannelPlaylist = /\.m3u(?:$|\?)/i.test(streamUrl || "") && !/\.m3u8(?:$|\?)/i.test(streamUrl || "");
   const activeStreamUrl = isChannelPlaylist ? selectedPlaylistUrl : streamUrl;
@@ -266,7 +271,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [activeStreamUrl, autoPlay]);
+  }, [activeStreamUrl, autoPlay, retryToken]);
 
   // Handle play/pause
   const togglePlay = () => {
@@ -474,7 +479,7 @@ export default function VideoPlayer({
             >
               Open source
             </button>
-            <button onClick={() => window.location.reload()} className={styles.retryBtn}>
+            <button onClick={() => setRetryToken((current) => current + 1)} className={styles.retryBtn}>
               Retry
             </button>
           </div>
