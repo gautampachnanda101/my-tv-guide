@@ -346,11 +346,17 @@ export default function VideoPlayer({
       setIsLoading(false);
       playbackStartedRef.current = true;
     };
-    // Native HLS (Safari/iOS) sets isLoading false optimistically right after
-    // `.load()`, without waiting for real data - if the manifest is blocked
-    // or the stream is down, the <video> element fires its own 'error' here
-    // rather than through hls.js, and previously nothing was listening for it.
+    // Native HLS (Safari/iOS) and the plain <video src> path set isLoading
+    // false optimistically without waiting for real data - if the manifest
+    // is blocked or the stream is down, the <video> element fires its own
+    // 'error' event rather than through hls.js. hls.js-managed playback
+    // already has its own (sometimes non-fatal/recoverable) error handling
+    // via Hls.Events.ERROR, and the level-switch/recovery process it does
+    // internally can itself trigger a spurious native 'error' on <video> -
+    // treating that as fatal here broke playback that hls.js would have
+    // otherwise recovered from, so skip it whenever hls.js is attached.
     const handleVideoError = () => {
+      if (hlsRef.current) return;
       playbackStartedRef.current = true;
       setIsLoading(false);
       setError('This channel could not play on this device or network. Try another channel or use Open source.');
