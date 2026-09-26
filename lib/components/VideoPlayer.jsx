@@ -40,6 +40,11 @@ export default function VideoPlayer({
   streamReferrer,
   streamUserAgent,
   streamGeoBlocked,
+  // Set when a quick pre-flight check (see playStream in app/page.js)
+  // already found this source dead before the player even mounted - skips
+  // straight to the error UI instead of a loading spinner that would just
+  // time out on its own a few seconds later.
+  initialError,
   channelName,
   title,
   autoPlay = false,
@@ -58,14 +63,14 @@ export default function VideoPlayer({
   const [isMuted, setIsMuted] = useState(muted);
   const [volume, setVolume] = useState(1);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(initialError || null);
   // Autoplay being blocked by the browser isn't a real playback error - it
   // just needs a user gesture. Treating it as `error` rendered the same
   // full-screen "something's wrong" overlay (with only "Open source"/
   // "Retry" buttons), which sits on top of and hides the actual play
   // button it was telling the user to press.
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!initialError);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [playlistEntries, setPlaylistEntries] = useState([]);
   const [selectedPlaylistUrl, setSelectedPlaylistUrl] = useState("");
@@ -126,11 +131,37 @@ export default function VideoPlayer({
     };
   }, [isChannelPlaylist, streamUrl, channelName]);
 
+  // The pre-flight check in playStream() resolves asynchronously, after
+  // this component has already mounted (and started a real attempt) for
+  // responsiveness - if it comes back bad, cut that attempt short instead
+  // of waiting out the full stall timeout. useState(initialError) only
+  // covers the case where it's already known at mount time; this covers it
+  // arriving afterward.
+  useEffect(() => {
+    if (!initialError) return;
+    if (stallTimeoutRef.current) {
+      clearTimeout(stallTimeoutRef.current);
+      stallTimeoutRef.current = null;
+    }
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+    setIsLoading(false);
+    setError(initialError);
+  }, [initialError]);
+
   // Load HLS.js dynamically (only on client)
   useEffect(() => {
     let hls = null;
     
     const initPlayer = async () => {
+      // A pre-flight check already found this source dead before mount -
+      // don't waste time attempting it on the first render, just show the
+      // error immediately. A user-triggered Retry (retryToken > 0) still
+      // does a real attempt - the pre-flight check can have false
+      // negatives (e.g. a CDN that blocks HEAD but allows GET).
+      if (initialError && retryToken === 0) return;
       if (!activeStreamUrl || !videoRef.current) return;
 
       setError(null);
@@ -309,7 +340,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [activeStreamUrl, autoPlay, retryToken, forceProxy, streamReferrer, streamUserAgent, streamGeoBlocked]);
+  }, [activeStreamUrl, autoPlay, retryToken, forceProxy, streamReferrer, streamUserAgent, streamGeoBlocked, initialError]);
 
   // Handle play/pause
   const togglePlay = () => {

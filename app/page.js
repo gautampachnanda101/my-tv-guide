@@ -1239,19 +1239,20 @@ export default function HomePage() {
     });
   }
 
-  function playStream(item) {
+  async function playStream(item) {
     const matchedChannel = channelMetadata.get(normalizeFilterText(item?.channel || item?.name));
     const streamUrl = getPlayableStream(item, matchedChannel);
     if (!streamUrl) return;
     const streamMeta = getPlayableStreamMeta(streamUrl, item, matchedChannel);
 
+    const playSessionId = crypto.randomUUID();
     setPlayingStream({
       // Two different channels can share the same underlying playlist URL
       // (e.g. a multi-channel M3U source) - keying VideoPlayer on this id
       // forces a fresh remount per play request instead of reusing a
       // previous play's internal state (like an already-picked playlist
       // entry) just because the URL happens to match.
-      id: crypto.randomUUID(),
+      id: playSessionId,
       streamUrl,
       streamReferrer: streamMeta.referrer,
       streamUserAgent: streamMeta.userAgent,
@@ -1259,6 +1260,35 @@ export default function HomePage() {
       channelName: item.channel || item.name || "Live stream",
       title: item.show || item.title || null
     });
+
+    // Known geo-blocked sources are skipped: our own pre-flight check runs
+    // from the same (non-UK) Vercel region as the player's proxy fallback,
+    // so it would always report a false failure for a stream that might
+    // still work fine from the visitor's own (UK) browser - only the
+    // player's own direct attempt can give an honest answer for those.
+    if (streamMeta.geoBlocked) return;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(`/api/stream-check?url=${encodeURIComponent(streamUrl)}`, { signal: controller.signal });
+      clearTimeout(timeout);
+      const result = await response.json();
+      // A clear client/server error means the source is genuinely dead -
+      // ok:false paired with 401/403 is ambiguous (could be a Referer/UA
+      // check the actual player might still satisfy) and worth a real try.
+      if (!result.ok && result.status && result.status !== 401 && result.status !== 403) {
+        setPlayingStream((current) =>
+          current?.id === playSessionId
+            ? { ...current, initialError: `This channel returned an error (${result.status}) and is likely unavailable right now. Try another channel or use Open source.` }
+            : current
+        );
+      }
+    } catch {
+      // Network error checking it, or the check itself timed out - fail
+      // open and let the real player attempt speak for itself instead of
+      // blocking playback on an inconclusive pre-flight result.
+    }
   }
 
   async function openCheckedStream(item) {
@@ -2202,72 +2232,74 @@ export default function HomePage() {
                   <span className="attribution"> (streaming data via JustWatch)</span>
                 </p>
               ) : null}
-              {!getPlayableStream(
-                selectedItem.item,
-                channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
-              ) ? (
-                <>
-                  <p className="watch-title">Watch options</p>
-                  <div className="watch-links" aria-label="Watch options">
-                    {getWatchTargets(selectedItem.item, selectedItem.type).map((entry) => (
-                      <a key={entry.href} href={entry.href} target="_blank" rel="noreferrer" className="watch-link">
-                        {entry.label}
-                      </a>
-                    ))}
-                  </div>
-                </>
-              ) : null}
-              <div className="detail-actions">
-                {(() => {
-                  const streamUrl = getPlayableStream(
-                    selectedItem.item,
-                    channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
-                  );
-                  return streamUrl ? (
-                    <>
-                      <a
-                        href="#stream"
-                        className="cta cta-secondary"
-                        onClick={(event) => {
-                          event.preventDefault();
-                          openCheckedStream(selectedItem.item);
-                        }}
-                      >
-                        {checkingStream ? "Checking stream..." : isPlaylistUrl(streamUrl) ? "Open playlist" : "Open stream"}
-                      </a>
-                      <button
-                        type="button"
-                        className="cta cta-primary"
-                        onClick={() => playStream(selectedItem.item)}
-                      >
-                        ▶ Play now
+              {(() => {
+                const matchedChannel = channelMetadata.get(
+                  normalizeFilterText(selectedItem.item.channel || selectedItem.item.name)
+                );
+                const streamUrl = getPlayableStream(selectedItem.item, matchedChannel);
+                const watchTargets = getWatchTargets(selectedItem.item, selectedItem.type);
+                // Prefer the broadcaster's own official app/site over an
+                // unofficial crowd-sourced direct stream whenever one
+                // exists - it's both more reliable (official CDNs aren't
+                // geo/CORS-blocked for their own domain) and the more
+                // legitimate way to actually watch the content.
+                const hasOfficialWatch = watchTargets.length > 0;
+                return (
+                  <>
+                    {hasOfficialWatch ? (
+                      <>
+                        <p className="watch-title">Watch options</p>
+                        <div className="watch-links" aria-label="Watch options">
+                          {watchTargets.map((entry) => (
+                            <a key={entry.href} href={entry.href} target="_blank" rel="noreferrer" className="watch-link">
+                              {entry.label}
+                            </a>
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
+                    <div className="detail-actions">
+                      {streamUrl ? (
+                        <>
+                          <a
+                            href="#stream"
+                            className="cta cta-secondary"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              openCheckedStream(selectedItem.item);
+                            }}
+                          >
+                            {checkingStream ? "Checking stream..." : isPlaylistUrl(streamUrl) ? "Open playlist" : "Open stream"}
+                          </a>
+                          <button
+                            type="button"
+                            className={hasOfficialWatch ? "cta cta-secondary" : "cta cta-primary"}
+                            onClick={() => playStream(selectedItem.item)}
+                          >
+                            {hasOfficialWatch ? "Try unofficial stream" : "▶ Play now"}
+                          </button>
+                        </>
+                      ) : null}
+                      {selectedItem.destination ? (
+                        <a
+                          href={selectedItem.destination}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={streamUrl || hasOfficialWatch ? "cta cta-secondary" : "cta cta-primary"}
+                        >
+                          Open link
+                        </a>
+                      ) : !streamUrl && !hasOfficialWatch ? (
+                        <span className="state">No playable stream is available for this listing yet.</span>
+                      ) : null}
+                      {streamCheckError ? <span className="state error">{streamCheckError}</span> : null}
+                      <button type="button" className="cta cta-secondary" onClick={closeDetails}>
+                        Back to guide
                       </button>
-                    </>
-                  ) : null;
-                })()}
-                {selectedItem.destination ? (
-                  <a
-                    href={selectedItem.destination}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={getPlayableStream(
-                      selectedItem.item,
-                      channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
-                    ) ? "cta cta-secondary" : "cta cta-primary"}
-                  >
-                    Open link
-                  </a>
-                ) : !getPlayableStream(
-                  selectedItem.item,
-                  channelMetadata.get(normalizeFilterText(selectedItem.item.channel || selectedItem.item.name))
-                ) ? (
-                  <span className="state">No playable stream is available for this listing yet.</span>
-                ) : null}
-                {streamCheckError ? <span className="state error">{streamCheckError}</span> : null}
-                <button type="button" className="cta cta-secondary" onClick={closeDetails}>
-                  Back to guide
-                </button>
-              </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -2288,6 +2320,7 @@ export default function HomePage() {
             streamReferrer={playingStream.streamReferrer}
             streamUserAgent={playingStream.streamUserAgent}
             streamGeoBlocked={playingStream.streamGeoBlocked}
+            initialError={playingStream.initialError}
             channelName={playingStream.channelName}
             title={playingStream.title}
             autoPlay
