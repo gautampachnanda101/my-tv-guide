@@ -511,7 +511,11 @@ function getProgrammeStatus(item) {
   return `Starts ${formatDateTime(item.startAt)}`;
 }
 
-function buildUnifiedNowEntries(filteredLiveNow, filteredToday, filteredTvChannels, filteredStreamingApps) {
+// Only ever returns programmes: a channel or streaming app has no airing
+// time and isn't itself something to watch, so it doesn't belong in a
+// panel whose whole point is "what's playing right now" - that's what the
+// dedicated TV Channels/Streaming Apps tabs are for.
+function buildUnifiedNowEntries(filteredLiveNow, filteredToday) {
   const now = Date.now();
   const soonCutoff = now + 4 * 60 * 60 * 1000;
   const liveIds = new Set(filteredLiveNow.map((item) => item.id));
@@ -520,9 +524,7 @@ function buildUnifiedNowEntries(filteredLiveNow, filteredToday, filteredTvChanne
     ...filteredLiveNow.map((item) => ({ kind: "programme", badge: "LIVE", sortAt: 0, item })),
     ...filteredToday
       .filter((item) => !liveIds.has(item.id) && item.startAt && new Date(item.startAt).getTime() <= soonCutoff)
-      .map((item) => ({ kind: "programme", badge: "SOON", sortAt: new Date(item.startAt).getTime(), item })),
-    ...filteredTvChannels.map((item) => ({ kind: "channel", badge: "CHANNEL", sortAt: now + 1, item })),
-    ...filteredStreamingApps.map((item) => ({ kind: "app", badge: "APP", sortAt: now + 2, item }))
+      .map((item) => ({ kind: "programme", badge: "SOON", sortAt: new Date(item.startAt).getTime(), item }))
   ];
 
   entries.sort((a, b) => a.sortAt - b.sortAt);
@@ -1282,13 +1284,13 @@ export default function HomePage() {
   }, [filteredLiveNow, filteredToday, filteredUpcoming]);
   const featuredVisible = isFeaturedCompact ? featuredNow.slice(0, 3) : featuredNow;
 
-  // Answers "what's on for X, and where, right now" in one glance instead
-  // of forcing a click through Today / Live Now / TV Channels / Streaming
-  // Apps separately. Only shown when a search/genre filter is active - it's
-  // the merged view the plain per-category tabs below don't provide.
+  // Answers "what's on right now" for the current filters in one glance.
+  // Deliberately programmes-only (see buildUnifiedNowEntries) - channels
+  // and apps are catalog entries, not things airing at a given time, and
+  // belong in the dedicated TV Channels/Streaming Apps tabs instead.
   const unifiedNowResults = useMemo(
-    () => (hasActiveFilter ? buildUnifiedNowEntries(filteredLiveNow, filteredToday, filteredTvChannels, filteredStreamingApps) : []),
-    [hasActiveFilter, filteredLiveNow, filteredToday, filteredTvChannels, filteredStreamingApps]
+    () => (hasActiveFilter ? buildUnifiedNowEntries(filteredLiveNow, filteredToday) : []),
+    [hasActiveFilter, filteredLiveNow, filteredToday]
   );
 
   function openDetails(item, type = "programme") {
@@ -1912,67 +1914,32 @@ export default function HomePage() {
             <h2>Right now for &quot;{query || activeAppOrChannelLabel}&quot;</h2>
           </div>
           <p className="state">
-            Live and starting-soon programmes, channels, and services that match your search.
+            Live and starting-soon programmes that match your search.
           </p>
 
           {unifiedNowResults.length === 0 ? (
             <p className="state">Nothing matches right now. Try a broader term, or check Upcoming for later today.</p>
           ) : (
             <ul className="listing-grid visual">
-              {unifiedNowResults.map(({ kind, badge, item }) => {
-                if (kind === "programme") {
-                  return (
-                    <li key={`p-${item.id}`} className="listing-card">
-                      <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                        <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={badge} mediaKind={isAudioListing(item) ? "audio" : "video"} />
-                        <div className="card-body">
-                          <h3>{highlightText(item.show, query)}</h3>
-                          <p className="meta">{item.channel}</p>
-                          <p className="meta">
-                            {badge === "LIVE" ? `Started ${formatTime(item.startAt)}` : `Starts ${formatTime(item.startAt)}`}
-                          </p>
-                        </div>
-                      </button>
-                      {getPlayableStream(item) ? (
-                        <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                          Play now
-                        </button>
-                      ) : null}
-                    </li>
-                  );
-                }
-                if (kind === "channel") {
-                  return (
-                    <li key={`c-${item.id}`} className="listing-card">
-                      <button type="button" className="card-link card-button" onClick={() => openDetails(item, "channel")}>
-                        <MediaThumb image={item.logo} label={item.name} tag="CHANNEL" fit="contain" mediaKind={isAudioListing(item) ? "audio" : "video"} />
-                        <div className="card-body">
-                          <h3>{item.name}</h3>
-                          <p className="meta">{toArray(item.watchVia).join(", ") || item.access}</p>
-                        </div>
-                      </button>
-                      {getPlayableStream(item) ? (
-                        <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
-                          Play now
-                        </button>
-                      ) : null}
-                    </li>
-                  );
-                }
-                return (
-                  <li key={`a-${item.id}`} className="listing-card">
-                    <button type="button" className="card-link card-button" onClick={() => openDetails(item, "app")}>
-                      <MediaThumb image={item.logo} label={item.name} tag="APP" fit="contain" />
-                      <div className="card-body">
-                        <h3>{item.name}</h3>
-                        <p className="meta availability-tag">
-                          {Array.isArray(item.channels) && item.channels.length > 0 ? "Live channels" : "Available anytime"}
-                        </p>
-                      </div>
+              {unifiedNowResults.map(({ badge, item }) => (
+                <li key={`p-${item.id}`} className="listing-card">
+                  <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
+                    <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={badge} mediaKind={isAudioListing(item) ? "audio" : "video"} />
+                    <div className="card-body">
+                      <h3>{highlightText(item.show, query)}</h3>
+                      <p className="meta">{item.channel}</p>
+                      <p className="meta">
+                        {badge === "LIVE" ? `Started ${formatTime(item.startAt)}` : `Starts ${formatTime(item.startAt)}`}
+                      </p>
+                    </div>
+                  </button>
+                  {getPlayableStream(item) ? (
+                    <button type="button" className="cta cta-primary card-preview" onClick={() => playStream(item)}>
+                      Play now
                     </button>
-                  </li>
-                );
-              })}
+                  ) : null}
+                </li>
+              ))}
             </ul>
           )}
         </section>
