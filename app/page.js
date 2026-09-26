@@ -1520,7 +1520,14 @@ export default function HomePage() {
               onChange={(e) => setRegion(e.target.value)}
             >
               {guide.supportedRegions.map((value) => (
-                <option key={value} value={value}>
+                // region state/API params are lowercase ("uk") but these
+                // codes come straight from raw channel.country data, which
+                // is uppercase ("UK") - a value mismatch here means the
+                // browser can't match the controlled value to any option
+                // and silently falls back to displaying the first one
+                // (alphabetically "AD"), even though the real active
+                // region hadn't actually changed.
+                <option key={value} value={value.toLowerCase()}>
                   {value.toUpperCase()}
                 </option>
               ))}
