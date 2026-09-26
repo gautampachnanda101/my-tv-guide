@@ -258,7 +258,7 @@ const WATCH_PROVIDERS = {
   // clickable even though the channel is genuinely watchable via these
   // too - not a single-option channel, just missing provider entries.
   "sky-go": { homepage: "https://www.sky.com/watch/sky-go" },
-  "virgin-tv-go": { homepage: "https://www.virginmedia.com/tv/virgin-tv-go" },
+  "virgin-tv-go": { homepage: "https://virgintvgo.virginmedia.com/en/home" },
   "tnt-sports": { homepage: "https://www.tntsports.co.uk/" },
   "discovery-plus": { homepage: "https://www.discoveryplus.com/gb" }, // guessed /gb/search pattern 404'd on verification - homepage only until a real one is confirmed
   netflix: {
@@ -295,7 +295,11 @@ const WATCH_PROVIDERS = {
   tubitv: { homepage: "https://tubitv.com/" },
   "xumo-play": { homepage: "https://play.xumo.com/" },
   "samsung-tv-plus": { homepage: "https://www.samsung.com/uk/tvs/smart-tv/samsung-tv-plus/" },
-  "lg-channels": { homepage: "https://www.lg.com/uk/lg-channels" },
+  // LG's dedicated "LG Channels" marketing page 404s (confirmed via direct
+  // fetch, not just anti-bot blocking) and no working replacement could be
+  // found - falls back to LG's TVs page (which does load) until a real one
+  // turns up, per this file's existing pattern for unverifiable links.
+  "lg-channels": { homepage: "https://www.lg.com/uk/tvs/" },
   "roku-channel": { homepage: "https://therokuchannel.roku.com/" },
   plex: { homepage: "https://www.plex.tv/" },
   // The following each have a confirmed real app-link file (so they open
