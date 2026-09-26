@@ -255,7 +255,12 @@ const WATCH_PROVIDERS = {
   "discovery-plus": { homepage: "https://www.discoveryplus.com/gb" }, // guessed /gb/search pattern 404'd on verification - homepage only until a real one is confirmed
   netflix: {
     homepage: "https://www.netflix.com/",
-    buildSearchUrl: (title) => `https://www.netflix.com/search?q=${encodeURIComponent(title)}`
+    // Netflix's own Universal Links file declares "/search/*" (a path
+    // segment) as the valid format, not a "?q=" query param - confirmed
+    // live (302 redirect to sign-in for a signed-out request, same as any
+    // real Netflix link; opens straight into the app's search on mobile if
+    // installed).
+    buildSearchUrl: (title) => `https://www.netflix.com/search/${encodeURIComponent(title)}`
   },
   "prime-video": {
     homepage: "https://www.primevideo.com/",
@@ -284,7 +289,18 @@ const WATCH_PROVIDERS = {
   "samsung-tv-plus": { homepage: "https://www.samsung.com/uk/tvs/smart-tv/samsung-tv-plus/" },
   "lg-channels": { homepage: "https://www.lg.com/uk/lg-channels" },
   "roku-channel": { homepage: "https://therokuchannel.roku.com/" },
-  plex: { homepage: "https://www.plex.tv/" }
+  plex: { homepage: "https://www.plex.tv/" },
+  // The following each have a confirmed real app-link file (so they open
+  // the native app on mobile if installed), but no verified working
+  // *search* page URL yet - homepage only until one's confirmed live.
+  hotstar: { homepage: "https://www.hotstar.com/in" },
+  sonyliv: { homepage: "https://www.sonyliv.com/" },
+  iqiyi: { homepage: "https://www.iq.com/" },
+  youku: { homepage: "https://www.youku.com/" },
+  "hulu-japan": { homepage: "https://www.hulu.jp/" },
+  "canal-plus": { homepage: "https://www.canalplus.com/" },
+  joyn: { homepage: "https://www.joyn.de/" },
+  "mediaset-infinity": { homepage: "https://mediasetinfinity.mediaset.it/" }
 };
 
 const providerIdByName = {
@@ -328,7 +344,30 @@ const providerIdByName = {
   "samsung tv plus": "samsung-tv-plus",
   "lg channels": "lg-channels",
   "the roku channel": "roku-channel",
-  plex: "plex"
+  plex: "plex",
+  // TMDB's watch-providers endpoint (item.streamingOn) uses these exact
+  // provider_name strings - previously unmapped, so "Also streaming on"
+  // could only ever render as plain unclickable text, never a real link.
+  netflix: "netflix",
+  "amazon prime video": "prime-video",
+  "amazon video": "prime-video",
+  "disney plus": "disney-plus",
+  "apple tv plus": "apple-tv-plus",
+  "apple tv": "apple-tv-plus",
+  "paramount plus": "paramount-plus",
+  "discovery plus": "discovery-plus",
+  hotstar: "hotstar",
+  "disney+ hotstar": "hotstar",
+  sonyliv: "sonyliv",
+  "sony liv": "sonyliv",
+  iqiyi: "iqiyi",
+  "iq.com": "iqiyi",
+  youku: "youku",
+  "hulu japan": "hulu-japan",
+  "canal+": "canal-plus",
+  "canal plus": "canal-plus",
+  joyn: "joyn",
+  "mediaset infinity": "mediaset-infinity"
 };
 
 function buildProviderUrl(providerId, title, channel) {
@@ -627,6 +666,15 @@ function getWatchTargets(item, type = "programme") {
   if (item.channelWebsite) pushUniqueTarget(targets, seen, "Open channel site", item.channelWebsite);
 
   for (const hint of toArray(item.watchVia)) {
+    const resolved = getWatchViaLink(hint, title, item.channel);
+    if (resolved) pushUniqueTarget(targets, seen, `${resolved.audio ? "Listen on" : "Watch on"} ${hint}`, resolved.href);
+  }
+
+  // TMDB's streamingOn (Netflix, Prime Video, Disney+, etc.) used to only
+  // ever render as plain text, never a real link - resolve the same way
+  // watchVia hints do, now that providerIdByName knows TMDB's provider
+  // names too.
+  for (const hint of toArray(item.streamingOn)) {
     const resolved = getWatchViaLink(hint, title, item.channel);
     if (resolved) pushUniqueTarget(targets, seen, `${resolved.audio ? "Listen on" : "Watch on"} ${hint}`, resolved.href);
   }
