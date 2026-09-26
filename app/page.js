@@ -252,6 +252,14 @@ const WATCH_PROVIDERS = {
   "s4c-clic": { homepage: "https://www.s4c.cymru/clic/" },
   "stv-player": { homepage: "https://player.stv.tv/" },
   now: { homepage: "https://www.nowtv.com/" },
+  // "Sky"/"Sky Stream"/"Virgin Media"/"TNT App" watchVia hints had no entry
+  // at all, so on channels like the Sky-branded ones (watchVia: ["Sky",
+  // "NOW", "Sky Stream"]) they silently vanished, leaving only "NOW"
+  // clickable even though the channel is genuinely watchable via these
+  // too - not a single-option channel, just missing provider entries.
+  "sky-go": { homepage: "https://www.sky.com/watch/sky-go" },
+  "virgin-tv-go": { homepage: "https://www.virginmedia.com/tv/virgin-tv-go" },
+  "tnt-sports": { homepage: "https://www.tntsports.co.uk/" },
   "discovery-plus": { homepage: "https://www.discoveryplus.com/gb" }, // guessed /gb/search pattern 404'd on verification - homepage only until a real one is confirmed
   netflix: {
     homepage: "https://www.netflix.com/",
@@ -326,6 +334,15 @@ const providerIdByName = {
   "5select": "my5",
   now: "now",
   "now tv": "now",
+  sky: "sky-go",
+  "sky go": "sky-go",
+  "sky stream": "sky-go",
+  "sky q": "sky-go",
+  "sky add on": "sky-go",
+  "virgin media": "virgin-tv-go",
+  "virgin tv go": "virgin-tv-go",
+  "tnt app": "tnt-sports",
+  "tnt sports": "tnt-sports",
   u: "u",
   "discovery+": "discovery-plus",
   "disney+": "disney-plus",
