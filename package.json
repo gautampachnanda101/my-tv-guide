@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
-    "hls.js": "^1.7.1",
-    "next": "^16.3.1",
+    "hls.js": "^1.7.3",
+    "next": "^16.3.8",
     "next-auth": "^5.0.0-beta.32",
     "react": "19.1.1",
     "react-dom": "19.1.1"
@@ -22,9 +22,12 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "eslint": "^9.33.0",
-    "eslint-config-next": "^16.3.1",
+    "eslint-config-next": "^16.3.8",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "stylelint": "^17.14.1",
     "stylelint-config-standard": "^40.0.0"
+  },
+  "engines": {
+    "node": "24.x"
   }
 }

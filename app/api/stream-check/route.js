@@ -1,8 +1,8 @@
 import { safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
 
-// See app/api/stream-proxy/route.js for why this matters - this route also
-// probes UK-broadcaster-hosted stream URLs directly.
-export const preferredRegion = "lhr1";
+// Runs in London (lhr1) via the project-wide "regions" in vercel.json - see
+// stream-proxy for why. Hobby allows one region, so a per-route
+// preferredRegion here was silently ignored and these ran in iad1.
 
 async function checkUrl(url) {
   const headers = { Accept: "application/vnd.apple.mpegurl, video/*, */*" };
