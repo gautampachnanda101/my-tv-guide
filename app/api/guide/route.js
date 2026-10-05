@@ -1,4 +1,4 @@
-import { getGuideData, getSupportedRegions } from "@/lib/providers";
+import { getGuideData, getGuideDay, getSupportedRegions } from "@/lib/providers";
 
 // Cache API responses for 5 minutes (300 seconds)
 export const revalidate = 300;
@@ -23,6 +23,19 @@ export async function GET(request) {
   const includeAdult = searchParams.get("includeAdult") === "true";
   const page = Math.max(1, Number(searchParams.get("page") || 1));
   const pageSize = Math.min(150, Math.max(25, Number(searchParams.get("pageSize") || 100)));
+
+  // ?day=YYYY-MM-DD (London): just that day's programmes, for the Timeline's
+  // later days - the main response only carries the next 48 hours.
+  const day = searchParams.get("day");
+  if (day !== null) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      return Response.json({ ok: false, error: "day must be YYYY-MM-DD" }, { status: 400 });
+    }
+    const dayData = await getGuideDay({ region, query, day, includeAdult });
+    return Response.json({ ok: true, generatedAt: new Date().toISOString(), query, ...dayData }, {
+      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" }
+    });
+  }
 
   const data = await getGuideData({ region, query, country, genre, page, pageSize, catalogOnly, includeAdult });
 

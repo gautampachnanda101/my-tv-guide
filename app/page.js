@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import VideoPlayer from "@/lib/components/VideoPlayer";
 
 const mainTabs = [
@@ -453,20 +453,29 @@ function toLondonTimeMinutes(value) {
   return hour * 60 + minute;
 }
 
-// The timeline track only displays this window (see the rendered hour
-// labels below) - a channel whose programmes all fall outside it should not
-// get a row at all, otherwise it renders as a blank, seemingly-broken row.
-const TIMELINE_WINDOW_START_MINUTES = 14 * 60;
-const TIMELINE_WINDOW_END_MINUTES = 23 * 60;
+// The timeline shows a full day, 00:00-24:00 London time.
+const TIMELINE_WINDOW_START_MINUTES = 0;
+const TIMELINE_WINDOW_END_MINUTES = 24 * 60;
+const TIMELINE_HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+// Where the grid scrolls to when opening a day that isn't today.
+const TIMELINE_DEFAULT_SCROLL_HOUR = 18;
+// Today and Tomorrow come with the main /api/guide payload (next 48h);
+// later days are fetched one at a time with /api/guide?day=YYYY-MM-DD.
+const TIMELINE_PRELOADED_DAYS = 2;
 
-function isWithinTimelineWindow(item) {
-  const startMinutes = toLondonTimeMinutes(item.startAt);
-  const endMinutes = toLondonTimeMinutes(item.endAt) || (startMinutes !== null ? startMinutes + 30 : null);
-  if (startMinutes === null || endMinutes === null) return false;
+// Start/end of a programme in minutes since midnight of `dayKey` (London),
+// clipped to that day - a programme running 23:30-00:30 occupies
+// 1410-1440 on its first day instead of wrapping around to 30.
+function timelineSpanForDay(item, dayKey) {
+  const startDay = toLondonDayKey(item.startAt);
+  if (!startDay) return null;
+  const endValue = item.endAt || new Date(new Date(item.startAt).getTime() + 30 * 60 * 1000).toISOString();
+  const endDay = toLondonDayKey(endValue);
 
-  const clippedStart = Math.max(startMinutes, TIMELINE_WINDOW_START_MINUTES);
-  const clippedEnd = Math.min(endMinutes, TIMELINE_WINDOW_END_MINUTES);
-  return clippedEnd > clippedStart;
+  const start = startDay < dayKey ? 0 : startDay > dayKey ? null : toLondonTimeMinutes(item.startAt);
+  const end = endDay > dayKey ? TIMELINE_WINDOW_END_MINUTES : endDay < dayKey ? null : toLondonTimeMinutes(endValue);
+  if (start === null || end === null || end <= start) return null;
+  return { start, end };
 }
 
 function addDays(date, amount) {
@@ -1250,42 +1259,95 @@ export default function HomePage() {
     return toLondonDayKey(addDays(new Date(), timelineDayOffset));
   }, [timelineDayOffset]);
 
-  const timelineRowsByDay = useMemo(() => {
-    const byDay = new Map();
+  // Days beyond TIMELINE_PRELOADED_DAYS, fetched on demand: dayKey ->
+  // { status: "loading" | "ready" | "error", items }. Cleared whenever the
+  // region or search changes, since the server filters by both.
+  const [timelineFetchedDays, setTimelineFetchedDays] = useState({});
+  const timelineFetchesRef = useRef(new Set());
 
-    for (const item of allProgrammes) {
-      const dayKey = toLondonDayKey(item.startAt);
-      if (!dayKey) continue;
+  useEffect(() => {
+    timelineFetchesRef.current = new Set();
+    setTimelineFetchedDays({});
+  }, [region, query]);
 
-      if (!byDay.has(dayKey)) byDay.set(dayKey, new Map());
-      const dayChannels = byDay.get(dayKey);
+  const fetchTimelineDay = useCallback(async (dayKey, { force = false } = {}) => {
+    if (!force && timelineFetchesRef.current.has(dayKey)) return;
+    timelineFetchesRef.current.add(dayKey);
+    setTimelineFetchedDays((current) => ({ ...current, [dayKey]: { status: "loading", items: current[dayKey]?.items || [] } }));
+    try {
+      const params = new URLSearchParams({ region, q: query, day: dayKey, includeAdult: String(includeAdult) });
+      const response = await fetch(`/api/guide?${params}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      setTimelineFetchedDays((current) => ({ ...current, [dayKey]: { status: "ready", items: payload.programmes || [] } }));
+    } catch {
+      // Allow a later retry (button or re-selecting the day) to try again.
+      timelineFetchesRef.current.delete(dayKey);
+      setTimelineFetchedDays((current) => ({ ...current, [dayKey]: { status: "error", items: [] } }));
+    }
+  }, [region, query, includeAdult]);
 
+  // Load the selected day if it isn't part of the main payload, and quietly
+  // prefetch the following one so stepping forward is usually instant.
+  useEffect(() => {
+    if (mainTab !== "timeline") return;
+    for (const offset of [timelineDayOffset, timelineDayOffset + 1]) {
+      if (offset >= TIMELINE_PRELOADED_DAYS && offset < timelineDays.length) {
+        fetchTimelineDay(toLondonDayKey(addDays(new Date(), offset)));
+      }
+    }
+  }, [mainTab, timelineDayOffset, timelineDays.length, fetchTimelineDay]);
+
+  // Opening a day lands on something useful instead of 00:00: the current
+  // time on Today, prime time on any other day.
+  const isPreloadedTimelineDay = timelineDayOffset < TIMELINE_PRELOADED_DAYS;
+  const timelineDayStatus = isPreloadedTimelineDay
+    ? "ready"
+    : timelineFetchedDays[selectedTimelineDayKey]?.status || "loading";
+
+  // Opening a day lands on something useful instead of 00:00: the current
+  // time on Today, prime time on any other day. Runs once per day selection,
+  // when its grid has actually rendered (the guide or that day may still be
+  // loading when the tab opens), so it never fights the user's own scrolling.
+  const timelineWrapRef = useRef(null);
+  const timelineScrolledForRef = useRef(null);
+  const timelineGridReady = mainTab === "timeline" && !loading && timelineDayStatus === "ready";
+  useEffect(() => {
+    if (mainTab !== "timeline") timelineScrolledForRef.current = null;
+    const wrap = timelineWrapRef.current;
+    if (!timelineGridReady || !wrap || timelineScrolledForRef.current === timelineDayOffset) return;
+    timelineScrolledForRef.current = timelineDayOffset;
+    const minutes = timelineDayOffset === 0
+      ? Math.max(0, toLondonTimeMinutes(new Date().toISOString()) - 30)
+      : TIMELINE_DEFAULT_SCROLL_HOUR * 60;
+    const hours = wrap.querySelector(".timeline-hours");
+    const channelColumn = wrap.querySelector(".timeline-hours-spacer")?.offsetWidth || 0;
+    const trackWidth = (hours?.scrollWidth || wrap.scrollWidth) - channelColumn;
+    wrap.scrollLeft = (minutes / TIMELINE_WINDOW_END_MINUTES) * trackWidth;
+  }, [mainTab, timelineGridReady, timelineDayOffset]);
+
+  const timelineRows = useMemo(() => {
+    const source = isPreloadedTimelineDay
+      ? allProgrammes
+      : (timelineFetchedDays[selectedTimelineDayKey]?.items || []).filter(programmeMatchesFilters);
+
+    const byChannel = new Map();
+    for (const item of source) {
+      if (!timelineSpanForDay(item, selectedTimelineDayKey)) continue;
       const channel = item.channel || "Unknown channel";
-      if (!dayChannels.has(channel)) dayChannels.set(channel, []);
-      dayChannels.get(channel).push(item);
+      if (!byChannel.has(channel)) byChannel.set(channel, []);
+      byChannel.get(channel).push(item);
     }
 
-    const result = {};
-    for (const [dayKey, channelMap] of byDay.entries()) {
-      const rows = Array.from(channelMap.entries())
-        .map(([channel, items]) => ({
-          channel,
-          items: items
-            .filter(isWithinTimelineWindow)
-            .sort((a, b) => new Date(a.startAt || 0) - new Date(b.startAt || 0))
-        }))
-        .filter((row) => row.items.length > 0);
-
-      // No cap: every channel with programmes in this window renders, same
-      // policy as the uncapped channel catalogue elsewhere in this file.
-      rows.sort((a, b) => b.items.length - a.items.length);
-      result[dayKey] = rows;
-    }
-
-    return result;
-  }, [allProgrammes]);
-
-  const timelineRows = timelineRowsByDay[selectedTimelineDayKey] || [];
+    // No cap: every channel with programmes on this day renders, same
+    // policy as the uncapped channel catalogue elsewhere in this file.
+    return Array.from(byChannel.entries())
+      .map(([channel, items]) => ({
+        channel,
+        items: items.sort((a, b) => new Date(a.startAt || 0) - new Date(b.startAt || 0))
+      }))
+      .sort((a, b) => b.items.length - a.items.length);
+  }, [isPreloadedTimelineDay, allProgrammes, timelineFetchedDays, selectedTimelineDayKey, programmeMatchesFilters]);
   const featuredNow = useMemo(() => {
     const merged = [...filteredLiveNow, ...filteredToday, ...filteredUpcoming];
     const deduped = [];
@@ -1717,8 +1779,7 @@ export default function HomePage() {
           <div className="section-title-row">
             <h2>Timeline Guide</h2>
             <p className="state">
-              {selectedTimelineLabel} • {String(TIMELINE_WINDOW_START_MINUTES / 60).padStart(2, "0")}:00–
-              {String(TIMELINE_WINDOW_END_MINUTES / 60).padStart(2, "0")}:00 • Times in UK (Europe/London)
+              {selectedTimelineLabel} • Full day • Times in UK (Europe/London)
             </p>
           </div>
 
@@ -1768,21 +1829,41 @@ export default function HomePage() {
             </button>
           </div>
 
-          {isTimelinePending ? <p className="state">Updating timeline...</p> : null}
+          {isTimelinePending || timelineDayStatus === "loading" ? (
+            <p className="state" role="status">
+              {timelineDayStatus === "loading" ? `Loading ${selectedTimelineLabel}'s listings...` : "Updating timeline..."}
+            </p>
+          ) : null}
 
-          <div className="timeline-wrap">
+          {timelineDayStatus === "error" ? (
+            <p className="state" role="alert">
+              Couldn&apos;t load {selectedTimelineLabel}&apos;s listings.{" "}
+              <button type="button" className="ghost" onClick={() => fetchTimelineDay(selectedTimelineDayKey, { force: true })}>
+                Retry
+              </button>
+            </p>
+          ) : null}
+
+          <div className="timeline-wrap" ref={timelineWrapRef}>
             <div className="timeline-hours" aria-hidden>
               <span className="timeline-hours-spacer" />
-              {Array.from({ length: 9 }, (_, i) => 14 + i).map((hour) => (
+              {TIMELINE_HOURS.map((hour) => (
                 <span key={hour}>{String(hour).padStart(2, "0")}:00</span>
               ))}
             </div>
 
-            {timelineRows.length === 0 ? (
+            {timelineDayStatus === "loading"
+              ? Array.from({ length: 6 }, (_, index) => (
+                  <div key={`placeholder-${index}`} className="timeline-row timeline-row-placeholder" aria-hidden>
+                    <div className="timeline-channel" />
+                    <div className="timeline-track" />
+                  </div>
+                ))
+              : null}
+
+            {timelineDayStatus === "ready" && timelineRows.length === 0 ? (
               <p className="state">
-                Nothing airing {String(TIMELINE_WINDOW_START_MINUTES / 60).padStart(2, "0")}:00–
-                {String(TIMELINE_WINDOW_END_MINUTES / 60).padStart(2, "0")}:00 on {selectedTimelineLabel.toLowerCase()}.
-                Try the Browse tab&apos;s Live Now / Today lists for programmes outside this window.
+                No listings for {selectedTimelineLabel.toLowerCase()} match the current filters.
               </p>
             ) : null}
 
@@ -1794,15 +1875,13 @@ export default function HomePage() {
                 </div>
                 <div className="timeline-track">
                   {row.items.map((item) => {
-                    // row.items is already filtered to this window (see
-                    // timelineRowsByDay / isWithinTimelineWindow), so every
-                    // item here is guaranteed to intersect it.
-                    const startMinutes = toLondonTimeMinutes(item.startAt);
-                    const endMinutes = toLondonTimeMinutes(item.endAt) || startMinutes + 30;
+                    // row.items is already filtered to programmes with a
+                    // span on this day (see timelineRowsByDay).
+                    const span = timelineSpanForDay(item, selectedTimelineDayKey);
                     const windowStart = TIMELINE_WINDOW_START_MINUTES;
                     const windowEnd = TIMELINE_WINDOW_END_MINUTES;
-                    const clippedStart = Math.max(startMinutes, windowStart);
-                    const clippedEnd = Math.min(endMinutes, windowEnd);
+                    const clippedStart = span.start;
+                    const clippedEnd = span.end;
 
                     const left = ((clippedStart - windowStart) / (windowEnd - windowStart)) * 100;
                     const width = ((clippedEnd - clippedStart) / (windowEnd - windowStart)) * 100;
