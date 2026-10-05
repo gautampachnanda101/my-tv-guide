@@ -795,6 +795,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestIdRef = useRef(0);
+  // Id of the play session currently on screen - lets a late failure report
+  // from a superseded (closed or already-advanced) session be ignored.
+  const activePlaySessionRef = useRef(null);
   const [guide, setGuide] = useState({
     today: [],
     liveNow: [],
@@ -1310,13 +1313,36 @@ export default function HomePage() {
     });
   }
 
-  async function playStream(item) {
+  function closePlayer() {
+    activePlaySessionRef.current = null;
+    setPlayingStream(null);
+  }
+
+  function playStream(item) {
     const matchedChannel = channelMetadata.get(normalizeFilterText(item?.channel || item?.name));
-    const streamUrl = getPlayableStream(item, matchedChannel);
-    if (!streamUrl) return;
+    const candidates = getPlayableStreams(item, matchedChannel);
+    if (candidates.length === 0) return;
+    playStreamCandidate(item, matchedChannel, candidates, 0);
+  }
+
+  // Plays candidates[index]. Many channels list several mirror URLs, and
+  // whichever one happens to be first is often down - so while more remain,
+  // a failure (pre-flight or in the player) silently moves on to the next
+  // one, and only the last candidate is allowed to show the user an error.
+  async function playStreamCandidate(item, matchedChannel, candidates, index) {
+    const streamUrl = candidates[index];
     const streamMeta = getPlayableStreamMeta(streamUrl, item, matchedChannel);
+    const hasMoreCandidates = index < candidates.length - 1;
 
     const playSessionId = crypto.randomUUID();
+    activePlaySessionRef.current = playSessionId;
+    const advanceToNextCandidate = () => {
+      // Ignore reports from a session the user already closed or that
+      // already advanced (the player can report more than one failure).
+      if (activePlaySessionRef.current !== playSessionId) return;
+      playStreamCandidate(item, matchedChannel, candidates, index + 1);
+    };
+
     setPlayingStream({
       // Two different channels can share the same underlying playlist URL
       // (e.g. a multi-channel M3U source) - keying VideoPlayer on this id
@@ -1329,7 +1355,8 @@ export default function HomePage() {
       streamUserAgent: streamMeta.userAgent,
       streamGeoBlocked: streamMeta.geoBlocked,
       channelName: item.channel || item.name || "Live stream",
-      title: item.show || item.title || null
+      title: item.show || item.title || null,
+      onExhausted: hasMoreCandidates ? advanceToNextCandidate : null
     });
 
     // Known geo-blocked sources are skipped: our own pre-flight check runs
@@ -1349,6 +1376,10 @@ export default function HomePage() {
       // ok:false paired with 401/403 is ambiguous (could be a Referer/UA
       // check the actual player might still satisfy) and worth a real try.
       if (!result.ok && result.status && result.status !== 401 && result.status !== 403) {
+        if (hasMoreCandidates) {
+          advanceToNextCandidate();
+          return;
+        }
         setPlayingStream((current) =>
           current?.id === playSessionId
             ? { ...current, initialError: `This channel returned an error (${result.status}) and is likely unavailable right now. Try another channel or use Open source.` }
@@ -2353,7 +2384,7 @@ export default function HomePage() {
           <button
             type="button"
             className="player-back-button"
-            onClick={() => setPlayingStream(null)}
+            onClick={closePlayer}
           >
             <span aria-hidden="true">←</span> Back to guide
           </button>
@@ -2367,7 +2398,8 @@ export default function HomePage() {
             channelName={playingStream.channelName}
             title={playingStream.title}
             autoPlay
-            onClose={() => setPlayingStream(null)}
+            onExhausted={playingStream.onExhausted || undefined}
+            onClose={closePlayer}
           />
         </div>
       ) : null}

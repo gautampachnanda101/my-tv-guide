@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./VideoPlayer.module.css";
 
 function normalizeForMatch(value) {
@@ -49,7 +49,12 @@ export default function VideoPlayer({
   title,
   autoPlay = false,
   muted = false,
-  onClose
+  onClose,
+  // Called instead of showing a terminal error, when the parent gave this
+  // channel more than one candidate stream URL (see getPlayableStreams in
+  // app/page.js) - lets it advance to the next mirror silently instead of
+  // dead-ending the user on the first one that happens to be down.
+  onExhausted
 }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
@@ -92,6 +97,24 @@ export default function VideoPlayer({
     setForceProxy(false);
   }, [streamUrl, channelName]);
 
+  // A dead source either silently advances to the next candidate URL (when
+  // the parent supplied onExhausted) or, only once there's nothing left to
+  // try, shows a terminal error - never both for the same failure.
+  // Read through a ref so this stays stable and doesn't need to be listed
+  // as a dependency of (and re-run) the effects that call it.
+  const onExhaustedRef = useRef(onExhausted);
+  useEffect(() => {
+    onExhaustedRef.current = onExhausted;
+  }, [onExhausted]);
+  const reportFatalError = useCallback((message) => {
+    setIsLoading(false);
+    if (onExhaustedRef.current) {
+      onExhaustedRef.current(message);
+      return;
+    }
+    setError(message);
+  }, []);
+
   const isChannelPlaylist = /\.m3u(?:$|\?)/i.test(streamUrl || "") && !/\.m3u8(?:$|\?)/i.test(streamUrl || "");
   const activeStreamUrl = isChannelPlaylist ? selectedPlaylistUrl : streamUrl;
 
@@ -117,10 +140,10 @@ export default function VideoPlayer({
         setPlaylistEntries(entries);
         const matched = findBestPlaylistEntry(entries, channelName);
         setSelectedPlaylistUrl(matched?.url || entries[0]?.url || "");
-        if (entries.length === 0) setError("This M3U playlist contains no playable streams.");
+        if (entries.length === 0) reportFatalError("This M3U playlist contains no playable streams.");
       })
       .catch((error) => {
-        if (!cancelled) setError(error.message || "Could not load M3U playlist.");
+        if (!cancelled) reportFatalError(error.message || "Could not load M3U playlist.");
       })
       .finally(() => {
         if (!cancelled) setPlaylistLoading(false);
@@ -129,7 +152,7 @@ export default function VideoPlayer({
     return () => {
       cancelled = true;
     };
-  }, [isChannelPlaylist, streamUrl, channelName]);
+  }, [isChannelPlaylist, streamUrl, channelName, reportFatalError]);
 
   // The pre-flight check in playStream() resolves asynchronously, after
   // this component has already mounted (and started a real attempt) for
@@ -172,8 +195,7 @@ export default function VideoPlayer({
       if (stallTimeoutRef.current) clearTimeout(stallTimeoutRef.current);
       stallTimeoutRef.current = setTimeout(() => {
         if (!playbackStartedRef.current) {
-          setIsLoading(false);
-          setError(
+          reportFatalError(
             streamGeoBlocked
               ? 'This channel is restricted to viewers in the UK and may not be available on this network. Try another channel or use Open source.'
               : 'This channel is taking too long to load - it may be blocked on this network or temporarily down. Try another channel or use Open source.'
@@ -276,7 +298,6 @@ export default function VideoPlayer({
                 return;
               }
 
-              setIsLoading(false);
               switch (data.type) {
                   case Hls.ErrorTypes.NETWORK_ERROR: {
                     // HLS.js buckets both real connectivity failures and
@@ -287,31 +308,32 @@ export default function VideoPlayer({
                     // worth auto-retrying.
                     const status = data.response?.code;
                     if (status === 401 || status === 403) {
-                      setError('This channel is not available here right now. Try another channel or use Open source.');
+                      reportFatalError('This channel is not available here right now. Try another channel or use Open source.');
                     } else if (data.response?.code === 404 || data.response?.code === 410) {
-                      setError('This channel is no longer available. Try another channel or use Open source.');
+                      reportFatalError('This channel is no longer available. Try another channel or use Open source.');
                     } else {
-                      setError('This channel cannot play in the guide right now. Use Open source to watch it in a new tab, or try another channel.');
+                      reportFatalError('This channel cannot play in the guide right now. Use Open source to watch it in a new tab, or try another channel.');
                     }
                     break;
                   }
                   case Hls.ErrorTypes.MEDIA_ERROR:
+                    // Recoverable in place - not routed through onExhausted, since
+                    // the URL itself isn't necessarily bad.
+                    setIsLoading(false);
                     setError('This channel could not start in the player. Try another channel or use Open source.');
                     hls.recoverMediaError();
                     break;
                   default:
-                    setError('This channel could not be played here. Try another channel or use Open source.');
+                    reportFatalError('This channel could not be played here. Try another channel or use Open source.');
                     break;
                 }
             });
           } else {
-            setIsLoading(false);
-            setError('This channel format is not supported in this browser. Try Open source or another channel.');
+            reportFatalError('This channel format is not supported in this browser. Try Open source or another channel.');
           }
         } catch (err) {
           console.error('Failed to load HLS.js:', err);
-          setIsLoading(false);
-          setError('The player could not start this channel. Try Open source or another channel.');
+          reportFatalError('The player could not start this channel. Try Open source or another channel.');
         }
       } else {
         // Direct video source
@@ -340,7 +362,7 @@ export default function VideoPlayer({
         hlsRef.current = null;
       }
     };
-  }, [activeStreamUrl, autoPlay, retryToken, forceProxy, streamReferrer, streamUserAgent, streamGeoBlocked, initialError]);
+  }, [activeStreamUrl, autoPlay, retryToken, forceProxy, streamReferrer, streamUserAgent, streamGeoBlocked, initialError, reportFatalError]);
 
   // Handle play/pause
   const togglePlay = () => {
@@ -465,8 +487,7 @@ export default function VideoPlayer({
         return;
       }
       playbackStartedRef.current = true;
-      setIsLoading(false);
-      setError(
+      reportFatalError(
         streamGeoBlocked
           ? 'This channel is restricted to viewers in the UK and may not be available on this network. Try another channel or use Open source.'
           : 'This channel could not play on this device or network. Try another channel or use Open source.'
