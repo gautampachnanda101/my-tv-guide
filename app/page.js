@@ -596,6 +596,16 @@ function MediaThumb({ image, logo, label, tag, fit = "cover", mediaKind }) {
     logo ? { src: logo, fit: "contain" } : null
   ].find((candidate) => candidate && !failedSources.includes(candidate.src));
 
+  const mediaBadge = mediaKind ? (
+    <span
+      className={mediaKind === "audio" ? "thumb-media-badge audio" : "thumb-media-badge video"}
+      aria-label={mediaKind === "audio" ? "Audio" : "Video"}
+      title={mediaKind === "audio" ? "Audio" : "Video"}
+    >
+      {mediaKind === "audio" ? "🎧" : "📺"}
+    </span>
+  ) : null;
+
   if (source) {
     return (
       <div className="thumb-wrap">

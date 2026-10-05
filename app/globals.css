@@ -1198,6 +1198,11 @@ h2 {
 .thumb-img-contain {
   object-fit: contain;
   padding: 1rem;
+
+  /* next/image `fill` sets width/height: 100% inline - without border-box
+     the padding makes the image box bigger than the frame, and the
+     letterboxed logo gets clipped by .thumb-wrap's overflow: hidden. */
+  box-sizing: border-box;
 }
 
 .thumb-fallback {

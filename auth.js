@@ -5,6 +5,11 @@ import { getOrCreateUserAccount } from "@/lib/sources/userStreams";
 const adminLogin = String(process.env.ADMIN_GITHUB_LOGIN || "").trim().toLowerCase();
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // auth() runs on every page (root layout + proxy), so a missing secret
+  // used to crash the whole app locally even though sign-in is optional.
+  // Outside production, fall back to a fixed dev-only secret; production
+  // still requires a real AUTH_SECRET and fails loudly without one.
+  secret: process.env.AUTH_SECRET || (process.env.NODE_ENV === "production" ? undefined : "local-dev-only-auth-secret"),
   providers: [GitHub],
   session: { strategy: "jwt" },
   callbacks: {
