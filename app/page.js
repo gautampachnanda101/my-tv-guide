@@ -581,35 +581,34 @@ function trimSummary(value, max = 140) {
   return text.length > max ? `${text.slice(0, max - 1)}...` : text;
 }
 
-function MediaThumb({ image, label, tag, fit = "cover", mediaKind }) {
-  const [imageFailed, setImageFailed] = useState(false);
+function MediaThumb({ image, logo, label, tag, fit = "cover", mediaKind }) {
+  const [failedSources, setFailedSources] = useState([]);
 
   useEffect(() => {
-    setImageFailed(false);
-  }, [image]);
+    setFailedSources([]);
+  }, [image, logo]);
 
-  const mediaBadge = mediaKind ? (
-    <span
-      className={mediaKind === "audio" ? "thumb-media-badge audio" : "thumb-media-badge video"}
-      aria-label={mediaKind === "audio" ? "Audio" : "Video"}
-      title={mediaKind === "audio" ? "Audio" : "Video"}
-    >
-      {mediaKind === "audio" ? "🎧" : "📺"}
-    </span>
-  ) : null;
+  // Real artwork fills the frame, but a channel logo standing in for it is
+  // letterboxed instead - cropping a wordmark to fill a wide card blows it
+  // up past recognition. Artwork that fails to load falls back to the logo.
+  const source = [
+    image ? { src: image, fit } : null,
+    logo ? { src: logo, fit: "contain" } : null
+  ].find((candidate) => candidate && !failedSources.includes(candidate.src));
 
-  if (image && !imageFailed) {
+  if (source) {
     return (
       <div className="thumb-wrap">
         <Image
-          src={image}
+          key={source.src}
+          src={source.src}
           alt={`${label} artwork`}
-          className={fit === "contain" ? "thumb-img thumb-img-contain" : "thumb-img"}
+          className={source.fit === "contain" ? "thumb-img thumb-img-contain" : "thumb-img"}
           fill
           sizes="152px"
           unoptimized
           decoding="async"
-          onError={() => setImageFailed(true)}
+          onError={() => setFailedSources((current) => [...current, source.src])}
         />
         <span className="thumb-tag">{tag}</span>
         {mediaBadge}
@@ -1619,7 +1618,7 @@ export default function HomePage() {
                 className="hero-radar-feature feature-button"
                 onClick={() => openDetails(featuredNow[0], "programme")}
               >
-                <MediaThumb image={featuredNow[0].image || featuredNow[0].channelLogo} label={featuredNow[0].show || featuredNow[0].channel} tag={getProgrammeStatus(featuredNow[0])} mediaKind={isAudioListing(featuredNow[0]) ? "audio" : "video"} />
+                <MediaThumb image={featuredNow[0].image} logo={featuredNow[0].channelLogo} label={featuredNow[0].show || featuredNow[0].channel} tag={getProgrammeStatus(featuredNow[0])} mediaKind={isAudioListing(featuredNow[0]) ? "audio" : "video"} />
                 <div className="hero-radar-body">
                   <h3>{highlightText(featuredNow[0].show, query)}</h3>
                   <p>{highlightText(featuredNow[0].title, query)}</p>
@@ -1690,7 +1689,7 @@ export default function HomePage() {
                 className={index === 0 ? "feature-card feature-card-main feature-button" : "feature-card feature-button"}
                 onClick={() => openDetails(item, "programme")}
               >
-                <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={index === 0 ? "EDITOR'S PICK" : "TRENDING"} mediaKind={isAudioListing(item) ? "audio" : "video"} />
+                <MediaThumb image={item.image} logo={item.channelLogo} label={item.show || item.channel} tag={index === 0 ? "EDITOR'S PICK" : "TRENDING"} mediaKind={isAudioListing(item) ? "audio" : "video"} />
                 <div className="feature-body">
                   <h3>{highlightText(item.show, query)}</h3>
                   <p>{highlightText(item.title, query)}</p>
@@ -1966,7 +1965,7 @@ export default function HomePage() {
               {unifiedNowResults.map(({ badge, item }) => (
                 <li key={`p-${item.id}`} className="listing-card">
                   <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                    <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={badge} mediaKind={isAudioListing(item) ? "audio" : "video"} />
+                    <MediaThumb image={item.image} logo={item.channelLogo} label={item.show || item.channel} tag={badge} mediaKind={isAudioListing(item) ? "audio" : "video"} />
                     <div className="card-body">
                       <h3>{highlightText(item.show, query)}</h3>
                       <p className="meta">{item.channel}</p>
@@ -2054,7 +2053,7 @@ export default function HomePage() {
             {filteredToday.slice(0, listVisibleCount).map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                  <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="TODAY" mediaKind={isAudioListing(item) ? "audio" : "video"} />
+                  <MediaThumb image={item.image} logo={item.channelLogo} label={item.show || item.channel} tag="TODAY" mediaKind={isAudioListing(item) ? "audio" : "video"} />
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
@@ -2093,7 +2092,7 @@ export default function HomePage() {
             {filteredLiveNow.slice(0, listVisibleCount).map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                  <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="LIVE" mediaKind={isAudioListing(item) ? "audio" : "video"} />
+                  <MediaThumb image={item.image} logo={item.channelLogo} label={item.show || item.channel} tag="LIVE" mediaKind={isAudioListing(item) ? "audio" : "video"} />
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
@@ -2132,7 +2131,7 @@ export default function HomePage() {
             {filteredUpcoming.slice(0, listVisibleCount).map((item) => (
               <li key={item.id} className="listing-card">
                 <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                  <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag="UP NEXT" mediaKind={isAudioListing(item) ? "audio" : "video"} />
+                  <MediaThumb image={item.image} logo={item.channelLogo} label={item.show || item.channel} tag="UP NEXT" mediaKind={isAudioListing(item) ? "audio" : "video"} />
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
@@ -2209,7 +2208,7 @@ export default function HomePage() {
                 {streamingServiceProgrammes.map((item) => (
                   <li key={item.id} className="listing-card">
                     <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
-                      <MediaThumb image={item.image || item.channelLogo} label={item.show || item.channel} tag={getProgrammeStatus(item)} mediaKind={isAudioListing(item) ? "audio" : "video"} />
+                      <MediaThumb image={item.image} logo={item.channelLogo} label={item.show || item.channel} tag={getProgrammeStatus(item)} mediaKind={isAudioListing(item) ? "audio" : "video"} />
                       <div className="card-body">
                         <h3>{highlightText(item.show, query)}</h3>
                         <p>{highlightText(item.title, query)}</p>
@@ -2283,7 +2282,8 @@ export default function HomePage() {
             </button>
             <div className="detail-media">
               <MediaThumb
-                image={selectedItem.item.image || selectedItem.item.channelLogo || selectedItem.item.logo}
+                image={selectedItem.item.image}
+                logo={selectedItem.item.channelLogo || selectedItem.item.logo}
                 label={selectedItem.item.show || selectedItem.item.name || selectedItem.item.title}
                 tag={(selectedItem.type || "item").toUpperCase()}
                 fit={selectedItem.type === "channel" || selectedItem.type === "app" ? "contain" : "cover"}
