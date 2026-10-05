@@ -10,6 +10,12 @@ import { getProviderRegistry } from '@/lib/framework';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // Exposes provider configuration status - off unless explicitly enabled
+  // (the flag documented in .env.example but previously never read).
+  if (process.env.NEXT_PUBLIC_ENABLE_STATS !== "true") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   try {
     // Ensure framework is initialized
     if (!isInitialized()) {

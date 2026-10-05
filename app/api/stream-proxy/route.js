@@ -3,6 +3,9 @@
 // only applies to resources the *browser* fetches directly, not to a server
 // fetching them on the browser's behalf, so this endpoint does the fetch
 // itself and re-serves the result from our own https origin.
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
+
 export const maxDuration = 30;
 // Vercel's default function region is US (iad1) - a UK broadcaster's geo
 // check on our own outbound request would fail from there even when the
@@ -13,32 +16,29 @@ export const preferredRegion = "lhr1";
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
 
-function isPrivateHostname(hostname) {
-  const host = hostname.toLowerCase().replace(/[[\]]/g, "");
-  if (host === "localhost" || host === "localhost.localdomain" || host === "::1") return true;
-  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
+// Without this, the proxy relays any URL on the internet - free bandwidth for
+// anyone, billed to this deployment. A top-level (unsigned) request may only
+// fetch an HLS manifest, capped at MAX_MANIFEST_BYTES; segment, key and
+// sub-playlist URLs are only served when signed by our own manifest rewrite.
+const SIGNING_SECRET =
+  process.env.STREAM_PROXY_SECRET ||
+  process.env.AUTH_SECRET ||
+  (process.env.NODE_ENV === "production" ? randomBytes(32).toString("hex") : "local-dev-only-stream-proxy-secret");
 
-  const private172 = host.match(/^172\.(\d+)\./);
-  if (private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31) return true;
-
-  return host === "169.254.169.254" || host.endsWith(".local");
+function signUrl(url) {
+  return createHmac("sha256", SIGNING_SECRET).update(url).digest("base64url");
 }
 
-function parseTarget(raw) {
-  if (!raw) return null;
-  let target;
-  try {
-    target = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (!/^https?:$/.test(target.protocol) || isPrivateHostname(target.hostname)) return null;
-  return target;
+function hasValidSignature(url, signature) {
+  if (!signature) return false;
+  const expected = Buffer.from(signUrl(url));
+  const actual = Buffer.from(signature);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 function proxyUrlFor(request, absoluteUrl, headerParams) {
   const origin = new URL(request.url).origin;
-  return `${origin}/api/stream-proxy?url=${encodeURIComponent(absoluteUrl)}${headerParams}`;
+  return `${origin}/api/stream-proxy?url=${encodeURIComponent(absoluteUrl)}&sig=${signUrl(absoluteUrl)}${headerParams}`;
 }
 
 function isManifest(target, contentType) {
@@ -84,8 +84,8 @@ function rewriteManifest(text, request, manifestUrl, headerParams) {
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const source = searchParams.get("url");
-  const target = parseTarget(source);
-  if (!target) return Response.json({ error: "Invalid or unsupported stream URL" }, { status: 400 });
+  if (!source) return Response.json({ error: "Missing stream URL" }, { status: 400 });
+  const isSigned = hasValidSignature(source, searchParams.get("sig"));
 
   // Strip control characters (CR/LF, etc.) before using these as literal
   // outbound header values - they're attacker-reachable via the query string.
@@ -100,16 +100,16 @@ export async function GET(request) {
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const upstream = await fetch(target, {
+    const upstream = await safeFetch(source, {
       signal: controller.signal,
       headers: {
         Accept: "*/*",
         ...(referrer ? { Referer: referrer } : {}),
         ...(userAgent ? { "User-Agent": userAgent } : {})
       },
-      cache: "no-store",
-      redirect: "follow"
+      cache: "no-store"
     });
+    const target = upstream.finalUrl;
 
     if (!upstream.ok) {
       return Response.json({ error: `Upstream returned ${upstream.status}` }, { status: 502 });
@@ -118,6 +118,10 @@ export async function GET(request) {
     const contentType = upstream.headers.get("content-type");
 
     if (isManifest(target, contentType)) {
+      if (Number(upstream.headers.get("content-length")) > MAX_MANIFEST_BYTES) {
+        upstream.body?.cancel();
+        return Response.json({ error: "Manifest is too large" }, { status: 413 });
+      }
       const text = await upstream.text();
       if (new TextEncoder().encode(text).byteLength > MAX_MANIFEST_BYTES) {
         return Response.json({ error: "Manifest is too large" }, { status: 413 });
@@ -130,6 +134,11 @@ export async function GET(request) {
       });
     }
 
+    if (!isSigned) {
+      upstream.body?.cancel();
+      return Response.json({ error: "Only HLS playlists can be requested directly" }, { status: 403 });
+    }
+
     // Segments/keys: stream the bytes straight through without buffering the
     // whole thing in memory.
     return new Response(upstream.body, {
@@ -139,6 +148,9 @@ export async function GET(request) {
       }
     });
   } catch (error) {
+    if (error instanceof UnsafeUrlError) {
+      return Response.json({ error: "Invalid or unsupported stream URL" }, { status: 400 });
+    }
     return Response.json(
       { error: error.name === "AbortError" ? "Upstream request timed out" : "Could not reach stream" },
       { status: 502 }

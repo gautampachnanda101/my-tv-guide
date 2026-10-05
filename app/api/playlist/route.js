@@ -1,19 +1,10 @@
+import { safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
+
 const MAX_PLAYLIST_BYTES = 5 * 1024 * 1024;
 const MAX_ENTRIES = 500;
 // See app/api/stream-proxy/route.js for why this matters - this route also
 // fetches UK-broadcaster-hosted playlists directly.
 export const preferredRegion = "lhr1";
-
-function isPrivateHostname(hostname) {
-  const host = hostname.toLowerCase().replace(/[\[\]]/g, "");
-  if (host === "localhost" || host === "localhost.localdomain" || host === "::1") return true;
-  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
-
-  const private172 = host.match(/^172\.(\d+)\./);
-  if (private172 && Number(private172[1]) >= 16 && Number(private172[1]) <= 31) return true;
-
-  return host === "169.254.169.254" || host.endsWith(".local");
-}
 
 function parseExtInf(line) {
   const commaIndex = line.indexOf(",");
@@ -80,8 +71,8 @@ export async function GET(request) {
   let playlistUrl;
   try {
     playlistUrl = new URL(source);
-    if (!/^https?:$/.test(playlistUrl.protocol) || isPrivateHostname(playlistUrl.hostname)) {
-      throw new Error("Unsupported playlist host");
+    if (!/^https?:$/.test(playlistUrl.protocol)) {
+      throw new Error("Unsupported playlist URL");
     }
   } catch {
     return Response.json({ error: "Invalid playlist URL" }, { status: 400 });
@@ -91,7 +82,7 @@ export async function GET(request) {
   const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const response = await fetch(playlistUrl, {
+    const response = await safeFetch(playlistUrl.toString(), {
       signal: controller.signal,
       headers: { Accept: "audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain, */*" },
       cache: "no-store"
@@ -107,6 +98,9 @@ export async function GET(request) {
       headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" }
     });
   } catch (error) {
+    if (error instanceof UnsafeUrlError) {
+      return Response.json({ error: "Invalid playlist URL" }, { status: 400 });
+    }
     return Response.json({ error: error.name === "AbortError" ? "Playlist request timed out" : "Could not load playlist" }, { status: 502 });
   } finally {
     clearTimeout(timeout);
