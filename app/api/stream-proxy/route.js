@@ -16,10 +16,13 @@ export const maxDuration = 30;
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;
 
-// Without this, the proxy relays any URL on the internet - free bandwidth for
-// anyone, billed to this deployment. A top-level (unsigned) request may only
-// fetch an HLS manifest, capped at MAX_MANIFEST_BYTES; segment, key and
-// sub-playlist URLs are only served when signed by our own manifest rewrite.
+// Unsigned requests are relayed only when the upstream response is media: an
+// HLS manifest, or a raw video/audio stream (plenty of working IPTV channels
+// are bare MPEG-TS over http, e.g. "video/mpeg" from an Astra/udpxy box).
+// Anything else (web pages, JSON, files) is refused, so this can't be used
+// as a general-purpose web proxy. URLs produced by our own manifest rewrite
+// carry a signature and are relayed as-is (keys and segments often come
+// back with generic content types).
 const SIGNING_SECRET =
   process.env.STREAM_PROXY_SECRET ||
   process.env.AUTH_SECRET ||
@@ -39,6 +42,18 @@ function hasValidSignature(url, signature) {
 function proxyUrlFor(request, absoluteUrl, headerParams) {
   const origin = new URL(request.url).origin;
   return `${origin}/api/stream-proxy?url=${encodeURIComponent(absoluteUrl)}&sig=${signUrl(absoluteUrl)}${headerParams}`;
+}
+
+function isMediaContentType(contentType) {
+  const type = String(contentType || "").toLowerCase();
+  return (
+    type.startsWith("video/") ||
+    type.startsWith("audio/") ||
+    type.includes("mp2t") ||
+    // Raw MPEG-TS from IPTV boxes is very often served as octet-stream.
+    type.startsWith("application/octet-stream") ||
+    type === ""
+  );
 }
 
 function isManifest(target, contentType) {
@@ -134,9 +149,9 @@ export async function GET(request) {
       });
     }
 
-    if (!isSigned) {
+    if (!isSigned && !isMediaContentType(contentType)) {
       upstream.body?.cancel();
-      return Response.json({ error: "Only HLS playlists can be requested directly" }, { status: 403 });
+      return Response.json({ error: "Not a media stream" }, { status: 403 });
     }
 
     // Segments/keys: stream the bytes straight through without buffering the
