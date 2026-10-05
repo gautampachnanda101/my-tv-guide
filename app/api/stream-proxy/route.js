@@ -7,11 +7,10 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
 
 export const maxDuration = 30;
-// Must run in London: a UK broadcaster's geo check on our outbound request
-// fails from Vercel's default US region (iad1) even when the viewer is in
-// the UK. That's set project-wide via "regions" in vercel.json - Hobby
-// allows only one function region, so a per-route preferredRegion here was
-// silently ignored and this ran in iad1.
+// Functions run in iad1 (US) - set project-wide via "regions" in vercel.json
+// (Hobby allows one function region). This is a worldwide catalogue, and
+// iad1 is what playback was tuned on; UK-only geo-restricted streams that
+// need this server-side fetch won't work from there.
 
 const FETCH_TIMEOUT_MS = 15000;
 const MAX_MANIFEST_BYTES = 2 * 1024 * 1024;

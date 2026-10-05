@@ -1,8 +1,9 @@
 import { safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
 
-// Runs in London (lhr1) via the project-wide "regions" in vercel.json - see
-// stream-proxy for why. Hobby allows one region, so a per-route
-// preferredRegion here was silently ignored and these ran in iad1.
+// Functions run in iad1 (US) - set project-wide via "regions" in vercel.json
+// (Hobby allows one function region). This is a worldwide catalogue, and
+// iad1 is what playback was tuned on; UK-only geo-restricted streams that
+// need this server-side fetch won't work from there.
 
 async function checkUrl(url) {
   const headers = { Accept: "application/vnd.apple.mpegurl, video/*, */*" };
