@@ -103,16 +103,23 @@ export default function VideoPlayer({
   // Read through a ref so this stays stable and doesn't need to be listed
   // as a dependency of (and re-run) the effects that call it.
   const onExhaustedRef = useRef(onExhausted);
+  // The parent's pre-play check (initialError, e.g. "returned an error
+  // (404)") is a concrete diagnosis; the player's own errors are guesses.
+  // Safari's native HLS fails within milliseconds, before that check
+  // returns, and a later <video> error event could then overwrite the
+  // specific message with a generic "could not play on this device".
+  const initialErrorRef = useRef(initialError);
   useEffect(() => {
     onExhaustedRef.current = onExhausted;
-  }, [onExhausted]);
+    initialErrorRef.current = initialError;
+  }, [onExhausted, initialError]);
   const reportFatalError = useCallback((message) => {
     setIsLoading(false);
     if (onExhaustedRef.current) {
       onExhaustedRef.current(message);
       return;
     }
-    setError(message);
+    setError(initialErrorRef.current || message);
   }, []);
 
   const isChannelPlaylist = /\.m3u(?:$|\?)/i.test(streamUrl || "") && !/\.m3u8(?:$|\?)/i.test(streamUrl || "");
