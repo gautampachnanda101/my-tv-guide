@@ -1,6 +1,6 @@
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
-import { getOrCreateUserAccount } from "@/lib/sources/userStreams";
+import { getOrCreateUserAccount, logStoreDiagnostics } from "@/lib/sources/userStreams";
 
 const adminLogin = String(process.env.ADMIN_GITHUB_LOGIN || "").trim().toLowerCase();
 
@@ -28,6 +28,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         try {
           const account = await getOrCreateUserAccount(login);
           token.subscribed = Boolean(account?.subscribed);
+          // No login in the log line - just what the lookup found.
+          console.log("[auth] account lookup:", account ? `found, subscribed=${Boolean(account.subscribed)}` : "no store (Turso not configured)");
+          await logStoreDiagnostics("sign-in", { force: true });
         } catch (error) {
           // Never log the raw error here - driver errors can echo back
           // query args, and this table only ever holds a login + a flag,

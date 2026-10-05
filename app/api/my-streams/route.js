@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { addUserStream, deleteUserStream, isUserStoreAvailable, listUserStreams } from "@/lib/sources/userStreams";
+import { addUserStream, deleteUserStream, isUserStoreAvailable, listUserStreams, logStoreDiagnostics } from "@/lib/sources/userStreams";
 
 // Never log request bodies, stream URLs, or GitHub logins in this file -
 // IPTV URLs often embed credentials, and logins are PII. Only log generic,
@@ -14,8 +14,17 @@ function currentUser(request) {
 export const GET = auth(async (request) => {
   const user = currentUser(request);
   if (!user) return Response.json({ error: "Sign in required." }, { status: 401 });
-  if (!user.subscribed) return Response.json({ error: "This feature requires a subscribed account." }, { status: 403 });
-  if (!isUserStoreAvailable()) return Response.json({ error: "Storage is not configured." }, { status: 503 });
+  await logStoreDiagnostics("my-streams");
+  if (!user.subscribed) {
+    // The subscribed flag lives in the session token, set at sign-in - a
+    // stale token keeps saying "not subscribed" until the user signs in again.
+    console.log("[my-streams] 403: session token says not subscribed (set at last sign-in)");
+    return Response.json({ error: "This feature requires a subscribed account." }, { status: 403 });
+  }
+  if (!isUserStoreAvailable()) {
+    console.log("[my-streams] 503: store unavailable (needs TURSO_DATABASE_URL, TURSO_AUTH_TOKEN and CREDENTIALS_MASTER_KEY)");
+    return Response.json({ error: "Storage is not configured." }, { status: 503 });
+  }
 
   const streams = await listUserStreams(user.githubLogin);
   return Response.json({ streams });
