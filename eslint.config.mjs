@@ -13,6 +13,9 @@ const eslintConfig = [
     files: ["**/*.{js,jsx,mjs,cjs,ts,tsx}"],
     rules: {
       "react-hooks/set-state-in-effect": "off",
+      // Catches references to deleted/misspelled variables, which otherwise
+      // only surface as a runtime ReferenceError in the browser.
+      "no-undef": "error",
       ...jsxA11y.configs.recommended.rules
     }
   }

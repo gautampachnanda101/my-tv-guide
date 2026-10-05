@@ -113,7 +113,7 @@ function itemHasGenre(item, genre) {
   const wanted = canonicalGenre(genre);
   if (!wanted) return true;
 
-  return [item?.genre, item?.category, ...toArray(item?.genres)].some(
+  return [item?.genre, item?.category, item?.channelGenre, ...toArray(item?.genres)].some(
     (value) => canonicalGenre(value) === wanted
   );
 }
