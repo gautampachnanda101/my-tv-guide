@@ -1,4 +1,4 @@
-import { safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
+import { HostNotFoundError, safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
 
 // Functions run in iad1 (US) - set project-wide via "regions" in vercel.json
 // (Hobby allows one function region). This is a worldwide catalogue, and
@@ -42,6 +42,11 @@ export async function GET(request) {
       headers: { "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60" }
     });
   } catch (error) {
+    if (error instanceof HostNotFoundError) {
+      return Response.json({ url: url.toString(), ok: false, status: 0, reason: "host-not-found" }, {
+        headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" }
+      });
+    }
     if (error instanceof UnsafeUrlError) {
       return Response.json({ ok: false, error: "Invalid stream URL" }, { status: 400 });
     }

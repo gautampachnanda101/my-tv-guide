@@ -4,7 +4,7 @@
 // fetching them on the browser's behalf, so this endpoint does the fetch
 // itself and re-serves the result from our own https origin.
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
+import { HostNotFoundError, safeFetch, UnsafeUrlError } from "@/lib/security/safeFetch";
 
 export const maxDuration = 30;
 // Functions run in iad1 (US) - set project-wide via "regions" in vercel.json
@@ -162,6 +162,9 @@ export async function GET(request) {
       }
     });
   } catch (error) {
+    if (error instanceof HostNotFoundError) {
+      return Response.json({ error: "Stream server not found" }, { status: 502 });
+    }
     if (error instanceof UnsafeUrlError) {
       return Response.json({ error: "Invalid or unsupported stream URL" }, { status: 400 });
     }

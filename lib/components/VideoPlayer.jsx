@@ -45,6 +45,9 @@ export default function VideoPlayer({
   // straight to the error UI instead of a loading spinner that would just
   // time out on its own a few seconds later.
   initialError,
+  // Shown instead of the player's generic error if playback fails, when the
+  // parent's pre-play check found a likely reason (e.g. a 403 from the source).
+  failureHint,
   channelName,
   title,
   autoPlay = false,
@@ -109,17 +112,19 @@ export default function VideoPlayer({
   // returns, and a later <video> error event could then overwrite the
   // specific message with a generic "could not play on this device".
   const initialErrorRef = useRef(initialError);
+  const failureHintRef = useRef(failureHint);
   useEffect(() => {
     onExhaustedRef.current = onExhausted;
     initialErrorRef.current = initialError;
-  }, [onExhausted, initialError]);
+    failureHintRef.current = failureHint;
+  }, [onExhausted, initialError, failureHint]);
   const reportFatalError = useCallback((message) => {
     setIsLoading(false);
     if (onExhaustedRef.current) {
       onExhaustedRef.current(message);
       return;
     }
-    setError(initialErrorRef.current || message);
+    setError(initialErrorRef.current || failureHintRef.current || message);
   }, []);
 
   const isChannelPlaylist = /\.m3u(?:$|\?)/i.test(streamUrl || "") && !/\.m3u8(?:$|\?)/i.test(streamUrl || "");

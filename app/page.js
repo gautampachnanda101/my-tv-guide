@@ -1443,10 +1443,29 @@ export default function HomePage() {
       const response = await fetch(`/api/stream-check?url=${encodeURIComponent(streamUrl)}`, { signal: controller.signal });
       clearTimeout(timeout);
       const result = await response.json();
-      // A clear client/server error means the source is genuinely dead -
-      // ok:false paired with 401/403 is ambiguous (could be a Referer/UA
-      // check the actual player might still satisfy) and worth a real try.
-      if (!result.ok && result.status && result.status !== 401 && result.status !== 403) {
+      const markSession = (fields) =>
+        setPlayingStream((current) => (current?.id === playSessionId ? { ...current, ...fields } : current));
+
+      // The stream's hostname no longer exists - a dead link, not a block.
+      if (!result.ok && result.reason === "host-not-found") {
+        if (hasMoreCandidates) {
+          advanceToNextCandidate();
+          return;
+        }
+        markSession({ initialError: "This channel's server no longer exists - the link is dead. Try another channel." });
+        return;
+      }
+      // 401/403 is ambiguous (a Referer/UA check the player might still
+      // satisfy, or a block that only applies to our server), so the player
+      // still gets a real try - but if it then fails, say why it probably did.
+      if (!result.ok && (result.status === 401 || result.status === 403)) {
+        markSession({
+          failureHint: "This source refused the connection. It may only be available in its home country, or blocked on your network. Try another channel or use Open source."
+        });
+        return;
+      }
+      // A clear client/server error means the source is genuinely dead.
+      if (!result.ok && result.status) {
         if (hasMoreCandidates) {
           advanceToNextCandidate();
           return;
@@ -2484,6 +2503,7 @@ export default function HomePage() {
             streamUserAgent={playingStream.streamUserAgent}
             streamGeoBlocked={playingStream.streamGeoBlocked}
             initialError={playingStream.initialError}
+            failureHint={playingStream.failureHint}
             channelName={playingStream.channelName}
             title={playingStream.title}
             autoPlay
