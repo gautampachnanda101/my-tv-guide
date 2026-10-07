@@ -1139,6 +1139,34 @@ export default function HomePage() {
   const filteredLiveNow = useMemo(() => guide.liveNow.filter(programmeMatchesFilters), [guide.liveNow, programmeMatchesFilters]);
   const filteredUpcoming = useMemo(() => guide.upcoming.filter(programmeMatchesFilters), [guide.upcoming, programmeMatchesFilters]);
 
+  // A channel with a playable stream is on air whenever you open it, even
+  // with no published schedule (all of XXX, most IPTV-only channels) - so
+  // it's listed under Live now as a "Streaming now" entry too. A channel
+  // that does have a programme on air right now is shown via that
+  // programme instead. Built from the loaded channel list, so the same
+  // region/genre/search filters apply; Live now tab and count only -
+  // Featured, "Right now" and the Timeline stay schedule-based.
+  const streamingNowEntries = useMemo(() => {
+    const onAirChannels = new Set(guide.liveNow.map((item) => normalizeFilterText(item.channel)));
+    return guide.tvChannels
+      .filter((channel) => getPlayableStream(channel) && !onAirChannels.has(normalizeFilterText(channel.name)))
+      .map((channel) => ({
+        ...channel,
+        id: `stream-${channel.id}`,
+        show: channel.name,
+        title: "Streaming now",
+        channel: channel.name,
+        channelLogo: channel.logo,
+        channelGenre: channel.genre,
+        isLiveStream: true,
+        startAt: null,
+        endAt: null
+      }))
+      .filter(programmeMatchesFilters);
+  }, [guide.liveNow, guide.tvChannels, programmeMatchesFilters]);
+
+  const liveNowListing = useMemo(() => [...filteredLiveNow, ...streamingNowEntries], [filteredLiveNow, streamingNowEntries]);
+
   // Whatever made the visible list change (new tab, new search, a filter, a
   // quick-pick chip) should start back at the top of a fresh bounded window,
   // not silently keep whatever count was reached in a previously viewed list.
@@ -1224,12 +1252,12 @@ export default function HomePage() {
   const counts = useMemo(
     () => ({
       today: filteredToday.length,
-      liveNow: filteredLiveNow.length,
+      liveNow: liveNowListing.length,
       upcoming: filteredUpcoming.length,
       tvChannels: filteredTvChannels.length,
       streamingApps: filteredStreamingApps.length
     }),
-    [filteredToday, filteredLiveNow, filteredUpcoming, filteredTvChannels, filteredStreamingApps]
+    [filteredToday, liveNowListing, filteredUpcoming, filteredTvChannels, filteredStreamingApps]
   );
 
   // The hero's top-line stats are a "how much data does this app have"
@@ -2188,24 +2216,24 @@ export default function HomePage() {
           </div>
         ) : null}
 
-        {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length === 0 ? (
+        {!loading && !error && browseTab === "liveNow" && liveNowListing.length === 0 ? (
           <p className="state">
             {selectedAppHasLiveChannels === false
               ? `${selectedApp.name} is on-demand - it has no "live" concept, its whole catalog is available anytime. Check the Streaming Apps tab instead.`
               : "Nothing is live right now."}
           </p>
         ) : null}
-        {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length > 0 ? (
+        {!loading && !error && browseTab === "liveNow" && liveNowListing.length > 0 ? (
           <ul className="listing-grid visual">
-            {filteredLiveNow.slice(0, listVisibleCount).map((item) => (
+            {liveNowListing.slice(0, listVisibleCount).map((item) => (
               <li key={item.id} className="listing-card">
-                <button type="button" className="card-link card-button" onClick={() => openDetails(item, "programme")}>
+                <button type="button" className="card-link card-button" onClick={() => openDetails(item, item.isLiveStream ? "channel" : "programme")}>
                   <MediaThumb image={item.image} logo={item.channelLogo} label={item.show || item.channel} tag="LIVE" mediaKind={isAudioListing(item) ? "audio" : "video"} />
                   <div className="card-body">
                     <h3>{highlightText(item.show, query)}</h3>
                     <p>{highlightText(item.title, query)}</p>
                     <p className="meta" title={item.regionalChannels?.join(", ")}>{formatChannelWithRegions(item)}</p>
-                    <p className="meta">Started: {formatDateTime(item.startAt)}</p>
+                    <p className="meta">{item.isLiveStream ? "Live stream · always on" : `Started: ${formatDateTime(item.startAt)}`}</p>
                     <p className="summary">{trimSummary(item.summary)}</p>
                     <p className="meta card-cta">See more</p>
                   </div>
@@ -2219,10 +2247,10 @@ export default function HomePage() {
             ))}
           </ul>
         ) : null}
-        {!loading && !error && browseTab === "liveNow" && filteredLiveNow.length > listVisibleCount ? (
+        {!loading && !error && browseTab === "liveNow" && liveNowListing.length > listVisibleCount ? (
           <div className="section-actions">
             <button type="button" className="ghost" onClick={() => setListVisibleCount((current) => current + LIST_PAGE_SIZE)}>
-              Show more ({filteredLiveNow.length - listVisibleCount} left)
+              Show more ({liveNowListing.length - listVisibleCount} left)
             </button>
           </div>
         ) : null}
