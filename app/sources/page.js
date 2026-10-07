@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth, signIn } from "@/auth";
+import LocalSourcesManager from "@/lib/components/LocalSourcesManager";
 import { isUserStoreAvailable, listUserStreams } from "@/lib/sources/userStreams";
 
 export default async function SourcesPage({ searchParams }) {
@@ -24,23 +25,28 @@ export default async function SourcesPage({ searchParams }) {
         </p>
       </section>
 
+      <LocalSourcesManager />
+
+      <h2 style={{ marginTop: "2rem" }}>Sync to your account (optional)</h2>
+      <p className="subhead">Saved server-side, encrypted, so the same streams show up on every device you sign in on.</p>
+
       {!session?.user ? (
         <section className="panel" style={{ marginTop: "1rem" }}>
-          <h2>Sign in required</h2>
-          <p className="subhead">Personal streams are a subscriber feature tied to your account, so you can reach them from any device.</p>
+          <h2>Sign in to sync</h2>
+          <p className="subhead">Streams saved on this device work without signing in. Sign in to also keep a synced copy on your account.</p>
           <form action={async () => { "use server"; await signIn("github", { redirectTo: "/sources" }); }}>
             <button type="submit" className="cta cta-primary">Continue with GitHub</button>
           </form>
         </section>
       ) : !session.user.subscribed ? (
         <section className="panel" style={{ marginTop: "1rem" }}>
-          <h2>Subscriber feature</h2>
-          <p className="subhead">Signed in as {session.user.githubLogin}. Personal streams aren&apos;t enabled on your account yet - contact the admin to enable them.</p>
+          <h2>Account sync not enabled</h2>
+          <p className="subhead">Signed in as {session.user.githubLogin}. Account sync isn&apos;t enabled on your account yet - contact the admin. Saving on this device still works.</p>
         </section>
       ) : (
         <>
           <section className="panel" style={{ marginTop: "1rem" }}>
-            <h2>Add a stream</h2>
+            <h2>Add a synced stream</h2>
             {errorMessage ? <p className="state error" role="alert">{errorMessage}</p> : null}
             {!isUserStoreAvailable() ? (
               <p className="state error" role="alert">Storage is not configured on this deployment.</p>
@@ -71,7 +77,7 @@ export default async function SourcesPage({ searchParams }) {
           </section>
 
           <section className="panel" style={{ marginTop: "1rem" }}>
-            <h2>Your streams</h2>
+            <h2>Synced to your account</h2>
             {streams.length === 0 ? <p className="state">No personal streams yet.</p> : (
               <div className="source-grid" style={{ marginTop: "1rem" }}>
                 {streams.map((source) => (

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import VideoPlayer from "@/lib/components/VideoPlayer";
+import { loadLocalSources, mergePersonalSources } from "@/lib/personalSources/localStore";
 
 const mainTabs = [
   { key: "home", label: "Home" },
@@ -858,7 +859,7 @@ export default function HomePage() {
         country: "PERSONAL",
         genre: "Personal",
         category: "Personal",
-        access: "Private to this browser",
+        access: source.origin === "device" ? "Saved on this device (encrypted)" : "Synced to your account",
         watchVia: ["Personal source"],
         streamUrl: source.url,
         sourceType: source.type || "stream"
@@ -957,14 +958,23 @@ export default function HomePage() {
   }, [region, query, countryFilter, genreFilter, mainTab, browseTab, includeAdult, personalSources]);
 
   useEffect(() => {
-    // Personal streams are now a server-persisted, subscriber-gated feature
-    // (see /sources) - the API returns an empty list (via 401/403) for
-    // signed-out or non-subscribed visitors, which is the correct "no
-    // personal streams" state here, not an error to surface.
-    fetch("/api/my-streams")
-      .then((response) => (response.ok ? response.json() : { streams: [] }))
-      .then((payload) => setPersonalSources(Array.isArray(payload.streams) ? payload.streams : []))
-      .catch(() => setPersonalSources([]));
+    // Personal sources come from two places (see /sources): the encrypted
+    // list saved on this device (no sign-in needed), and the account-synced
+    // list for signed-in subscribers - whose API returns 401/403 for
+    // everyone else, which just means "none synced", not an error.
+    let cancelled = false;
+    Promise.all([
+      loadLocalSources().catch(() => []),
+      fetch("/api/my-streams")
+        .then((response) => (response.ok ? response.json() : { streams: [] }))
+        .then((payload) => (Array.isArray(payload.streams) ? payload.streams : []))
+        .catch(() => [])
+    ]).then(([deviceSources, syncedSources]) => {
+      if (!cancelled) setPersonalSources(mergePersonalSources(deviceSources, syncedSources));
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1165,7 +1175,13 @@ export default function HomePage() {
       .filter(programmeMatchesFilters);
   }, [guide.liveNow, guide.tvChannels, programmeMatchesFilters]);
 
-  const liveNowListing = useMemo(() => [...filteredLiveNow, ...streamingNowEntries], [filteredLiveNow, streamingNowEntries]);
+  // Your own (personal) streams first, then what's scheduled on air, then
+  // the rest of the always-on catalogue streams.
+  const liveNowListing = useMemo(() => {
+    const personal = streamingNowEntries.filter((item) => item.country === "PERSONAL");
+    const catalogue = streamingNowEntries.filter((item) => item.country !== "PERSONAL");
+    return [...personal, ...filteredLiveNow, ...catalogue];
+  }, [filteredLiveNow, streamingNowEntries]);
 
   // Whatever made the visible list change (new tab, new search, a filter, a
   // quick-pick chip) should start back at the top of a fresh bounded window,
